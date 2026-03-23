@@ -23,7 +23,14 @@ class Visita(Base):
     odometro_inicio_url = Column(String(255))
     odometro_fim_url = Column(String(255))
     assinatura_cliente_url = Column(String(255))
-    comprovante_pedagio_urls = Column(JSON, nullable=False, server_default='[]')
-    comprovante_frete_urls = Column(JSON, nullable=False, server_default='[]')
+    comprovantes = relationship("Comprovante", back_populates="visita", cascade="all, delete-orphan")
     ordem_servico = relationship("OrdemServico", back_populates="visitas")
     servicos_realizados = relationship("ServicoEquipamento", back_populates="visita", cascade="all, delete-orphan")
+
+    @property
+    def comprovante_pedagio_urls(self):
+        return [c.url for c in self.comprovantes if c.tipo == 'pedagio']
+
+    @property
+    def comprovante_frete_urls(self):
+        return [c.url for c in self.comprovantes if c.tipo == 'frete']

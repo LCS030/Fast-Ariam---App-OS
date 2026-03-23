@@ -1,13 +1,7 @@
-# import enum
-from sqlalchemy import Column, Integer, String, Boolean, JSON, Enum
+from sqlalchemy import Column, Integer, String, Boolean, Enum
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 from app.schemas.base_schemas import UserRole
-
-
-# class UserRole(enum.Enum):
-#     admin = "admin"
-#     tecnico = "tecnico"
 
 
 class Tecnico(Base):
@@ -20,9 +14,18 @@ class Tecnico(Base):
     email = Column(String(100), nullable=False, unique=True)
     telefone = Column(String(20))
     password_hash = Column(String(100), nullable=False)
-    # role = Column(Enum(UserRole), nullable=False, default=UserRole.tecnico)
     role = Column(Enum(UserRole, values_callable=lambda obj: [e.value for e in obj]), nullable=False,
                   default=UserRole.TECNICO.value)
     is_active = Column(Boolean, nullable=False, default=True)
-    dados_bancarios = Column(JSON)
+    banco = Column(String(100))
+    agencia = Column(String(50))
+    conta = Column(String(50))
+    pix = Column(String(100))
+
     chamados = relationship("OrdemServico", back_populates="tecnico")
+
+    @property
+    def dados_bancarios(self):
+        if not any([self.banco, self.agencia, self.conta, self.pix]):
+            return None
+        return {"banco": self.banco, "agencia": self.agencia, "conta": self.conta, "pix": self.pix}

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.repositories.mysql_repository import SQLRepository
+from app.repositories.supabase_repository import SQLRepository
 from app.schemas.base_schemas import UserRole
 from app.schemas.tecnico import Tecnico, TecnicoCreate, TecnicoUpdate
 from app.core.security import hash_password, require_admin_role, get_current_active_user, verify_password

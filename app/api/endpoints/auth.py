@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Any
-from app.repositories.mysql_repository import SQLRepository
+from app.repositories.supabase_repository import SQLRepository
 from app.core.security import verify_password, create_access_token
 from app.schemas.token import Token
 from app.api.endpoints.tecnicos import get_tecnico_repository

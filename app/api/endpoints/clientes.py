@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.schemas.cliente import Cliente, ClienteCreate, ClienteUpdate
-from app.repositories.mysql_repository import SQLRepository
+from app.repositories.supabase_repository import SQLRepository
 from app.core.security import require_admin_role, get_current_active_user
 from app.db.database import get_db
 

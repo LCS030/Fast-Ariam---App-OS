@@ -124,6 +124,8 @@ class ServicoEquipamento(BaseModel):
             {"nome": "Gás R-134a", "quantidade": 2, "valor": 50.00}
         ]
     )
+    fotos_defeito: List[str] = []
+    fotos_conserto: List[str] = []
 
     class Config:
         from_attributes = True

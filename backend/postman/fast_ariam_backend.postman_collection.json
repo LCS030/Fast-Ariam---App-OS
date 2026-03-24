@@ -1,0 +1,1360 @@
+{
+	"info": {
+		"_postman_id": "e44f79c7-e504-463d-b69c-dcd2ba040547",
+		"name": "fast_ariam_backend",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "48474007",
+		"_collection_link": "https://pwumat-6509979.postman.co/workspace/Matheus-Jos%C3%A9's-Workspace~dfc914c4-ecf1-4044-8602-9e8a9dc6c9f4/collection/48474007-e44f79c7-e504-463d-b69c-dcd2ba040547?action=share&source=collection_link&creator=48474007"
+	},
+	"item": [
+		{
+			"name": "Tecnicos",
+			"item": [
+				{
+					"name": "Novo Técnico",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"cnpj\": \"00.112.233/0001-44\",\r\n  \"inscricao_estadual\": \"001.122.334.455\",\r\n  \"nome\": \"Alpha Soluções em Tecnologia\",\r\n  \"cpf\": \"123.456.789-12\",\r\n  \"telefone\": \"81955443322\",\r\n  \"email\": \"admin@email.com\",\r\n  \"password\": \"senha1\",\r\n  \"dados_bancarios\": {\r\n    \"banco\": \"Santander Brasil\",\r\n    \"agencia\": \"0011-2\",\r\n    \"conta\": \"99887-3\",\r\n    \"pix\": \"00112233000144\"\r\n  },\r\n  \"role\": \"admin\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/tecnicos",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"tecnicos"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Técnico por ID",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"cnpj\": \"12.345.678/0001-99\",\r\n  \"inscricao_estadual\": \"123.456.789.112\",\r\n  \"nome\": \"Paulo Cesar de Souza Refrigeração\",\r\n  \"telefone\": \"27996687821\",\r\n  \"email\": \"eletropaulorefrigeracao@gmail.com\",\r\n  \"password\": \"senhaSuperSecreta123\",\r\n  \"dados_bancarios\": {\r\n    \"banco\": \"Banco do Brasil\",\r\n    \"agencia\": \"1234-5\",\r\n    \"conta\": \"54321-0\",\r\n    \"pix\": \"12345678000199\"\r\n  }\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/tecnicos/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"tecnicos",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Todos Técnicos",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"cnpj\": \"12.345.678/0001-99\",\r\n  \"inscricao_estadual\": \"123.456.789.112\",\r\n  \"nome\": \"Paulo Cesar de Souza Refrigeração\",\r\n  \"telefone\": \"27996687821\",\r\n  \"email\": \"eletropaulorefrigeracao@gmail.com\",\r\n  \"password\": \"senhaSuperSecreta123\",\r\n  \"dados_bancarios\": {\r\n    \"banco\": \"Banco do Brasil\",\r\n    \"agencia\": \"1234-5\",\r\n    \"conta\": \"54321-0\",\r\n    \"pix\": \"12345678000199\"\r\n  }\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/tecnicos",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"tecnicos"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Todos Técnicos Com Filtro",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"cnpj\": \"12.345.678/0001-99\",\r\n  \"inscricao_estadual\": \"123.456.789.112\",\r\n  \"nome\": \"Paulo Cesar de Souza Refrigeração\",\r\n  \"telefone\": \"27996687821\",\r\n  \"email\": \"eletropaulorefrigeracao@gmail.com\",\r\n  \"password\": \"senhaSuperSecreta123\",\r\n  \"dados_bancarios\": {\r\n    \"banco\": \"Banco do Brasil\",\r\n    \"agencia\": \"1234-5\",\r\n    \"conta\": \"54321-0\",\r\n    \"pix\": \"12345678000199\"\r\n  }\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/tecnicos?is_active=false",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"tecnicos"
+							],
+							"query": [
+								{
+									"key": "is_active",
+									"value": "false"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Atualizar Tecnico",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"nome\": \"Luna Blanca\"\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/tecnicos/3",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"tecnicos",
+								"3"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Alterar Senha",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_1}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"old_password\": \"senhaSuperSecreta123\",\r\n    \"new_password\": \"senha123\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/tecnicos/me/password",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"tecnicos",
+								"me",
+								"password"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Deletar Técnicno (soft delete)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/tecnicos/3",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"tecnicos",
+								"3"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Chamados",
+			"item": [
+				{
+					"name": "Visitas",
+					"item": [
+						{
+							"name": "Adicionar Visita",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_2}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"data_visita\": \"2025-11-06\",\r\n    \"hora_inicio_deslocamento\": \"08:00\",\r\n    \"hora_chegada_cliente\": \"08:45\",\r\n    \"hora_inicio_atendimento\": \"09:00\",\r\n    \"hora_fim_atendimento\": \"11:00\",\r\n    \"km_total\": 30,\r\n    \"valor_pedagio\": 5.00,\r\n    \"valor_frete_devolucao\": 0,\r\n    \"descricao_servico_executado\": \"Visita para manutenção em dois equipamentos.\",\r\n    \"servico_finalizado\": false,\r\n    \"pendencia\": null,\r\n\r\n    \"servicos_realizados\": [\r\n        {\r\n            \"numero_serie_atendido\": \"SN-FREEZER-A\",\r\n            \"defeitos_principais\": [\"Refrigeração\"],\r\n            \"sub_defeitos_refrigeracao\": [\"Vazamento\"],\r\n            \"vazamento_ponto_descricao\": \"Solda refeita no ponto X.\",\r\n            \"materiais_utilizados\": [\r\n                {\"nome\": \"Solda\", \"quantidade\": 1, \"valor\": 10.0}\r\n            ]\r\n        },\r\n        {\r\n            \"numero_serie_atendido\": \"SN-GELADEIRA-B\",\r\n            \"defeitos_principais\": [\"Iluminação\", \"Estrutura\"],\r\n            \"sub_defeitos_iluminacao\": [\"Lâmpada Queimada\"],\r\n            \"sub_defeitos_estrutura\": [\"06 - Puxador\"],\r\n            \"materiais_utilizados\": [\r\n                {\"nome\": \"Lâmpada LED\", \"quantidade\": 2, \"valor\": 25.0},\r\n                {\"nome\": \"Puxador Novo\", \"quantidade\": 1, \"valor\": 45.0}\r\n            ]\r\n        }\r\n    ]\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/1/visitas",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"1",
+										"visitas"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Upload de Foto (odometro_incio)",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_2}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "file_type",
+											"value": "odometro_inicio_url",
+											"type": "text"
+										},
+										{
+											"key": "file",
+											"type": "file",
+											"src": "/F:/Users/matas/Downloads/a/odo1.png"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/1/visitas/1/upload_file",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"1",
+										"visitas",
+										"1",
+										"upload_file"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Upload de Foto (odometro_fim)",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_2}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "file_type",
+											"value": "odometro_fim_url",
+											"type": "text"
+										},
+										{
+											"key": "file",
+											"type": "file",
+											"src": "/F:/Users/matas/Downloads/a/odo2.png"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/1/visitas/1/upload_file",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"1",
+										"visitas",
+										"1",
+										"upload_file"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Upload de Foto (assinatura)",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_2}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "file_type",
+											"value": "assinatura_cliente_url",
+											"type": "text"
+										},
+										{
+											"key": "file",
+											"type": "file",
+											"src": "/F:/Users/matas/Downloads/a/ass1.png"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/1/visitas/1/upload_file",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"1",
+										"visitas",
+										"1",
+										"upload_file"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Upload de Foto (pedágio)",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_2}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "file_type",
+											"value": "comprovante_pedagio_urls",
+											"type": "text"
+										},
+										{
+											"key": "file",
+											"type": "file",
+											"src": "/F:/Users/matas/Downloads/a/ped1.png"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/1/visitas/1/upload_file",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"1",
+										"visitas",
+										"1",
+										"upload_file"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Upload de Foto (frete)",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_2}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "file_type",
+											"value": "comprovante_frete_urls",
+											"type": "text"
+										},
+										{
+											"key": "file",
+											"type": "file",
+											"src": "/F:/Users/matas/Downloads/a/frete1.png"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/1/visitas/1/upload_file",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"1",
+										"visitas",
+										"1",
+										"upload_file"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Atualizar Visita",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_1}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PATCH",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"km_total\": 999999\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/3/visitas/2",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"3",
+										"visitas",
+										"2"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Finalizar Chamado",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_1}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PATCH",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\"servico_finalizado\": true}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/1/visitas/1",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"1",
+										"visitas",
+										"1"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Custos",
+					"item": [
+						{
+							"name": "Calcular Custos do Chamado",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token_tecnico_1}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"cliente\": {\r\n        \"razao_social\": \"Auto Serviço Peixodo LTDA\"\r\n    }\r\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}:{{port}}/api/chamados/2/custos",
+									"host": [
+										"{{base_url}}"
+									],
+									"port": "{{port}}",
+									"path": [
+										"api",
+										"chamados",
+										"2",
+										"custos"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Novo Chamado",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_1}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"id_cliente\": 1,\r\n  \"descricao_cliente\": \"Descrição do problema que o cliente descreveu.\",\r\n  \"numero_serie_equipamento\": \"1411224002524-F01\",\r\n  \"pedido\": \"5314024-1\",\r\n  \"data_faturamento\": \"2025-03-07\",\r\n  \"data_agendamento\": \"2025-11-03\",\r\n  \"em_garantia\": true,\r\n  \"id_tecnico_atribuido\": 2\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/chamados",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"chamados"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Todos Chamados",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_3}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"cnpj\": \"12.345.678/0001-99\",\r\n  \"inscricao_estadual\": \"123.456.789.112\",\r\n  \"nome\": \"Paulo Cesar de Souza Refrigeração\",\r\n  \"telefone\": \"27996687821\",\r\n  \"email\": \"eletropaulorefrigeracao@gmail.com\",\r\n  \"password\": \"senhaSuperSecreta123\",\r\n  \"dados_bancarios\": {\r\n    \"banco\": \"Banco do Brasil\",\r\n    \"agencia\": \"1234-5\",\r\n    \"conta\": \"54321-0\",\r\n    \"pix\": \"12345678000199\"\r\n  }\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/chamados",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"chamados"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Chamado por ID",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_1}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"cliente\": {\r\n        \"razao_social\": \"Auto Serviço Peixodo LTDA\",\r\n        \"contato_principal\": {\r\n            \"nome\": \"Karina\",\r\n            \"telefone\": \"(27) 9 9643-9718\"\r\n        },\r\n        \"telefone\": \"(27) 3251-1264\",\r\n        \"endereco\": \"Praça João Miguel\",\r\n        \"numero\": \"132\",\r\n        \"bairro\": \"Serra Centro\",\r\n        \"cidade\": \"Serra\",\r\n        \"uf\": \"ES\",\r\n        \"codigo\": \"55835\",\r\n        \"pedido\": \"5314024-1\",\r\n        \"data_faturamento\": \"2025-03-07\",\r\n        \"em_garantia\": true\r\n    },\r\n    \"descricao_cliente\": \"Equipamento está formando gelo em excesso na parte interna.\",\r\n    \"numero_serie_equipamento\": \"1411224002524-F01\"\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/chamados/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"chamados",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Todos Chamados Com Filtro",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"cnpj\": \"12.345.678/0001-99\",\r\n  \"inscricao_estadual\": \"123.456.789.112\",\r\n  \"nome\": \"Paulo Cesar de Souza Refrigeração\",\r\n  \"telefone\": \"27996687821\",\r\n  \"email\": \"eletropaulorefrigeracao@gmail.com\",\r\n  \"password\": \"senhaSuperSecreta123\",\r\n  \"dados_bancarios\": {\r\n    \"banco\": \"Banco do Brasil\",\r\n    \"agencia\": \"1234-5\",\r\n    \"conta\": \"54321-0\",\r\n    \"pix\": \"12345678000199\"\r\n  }\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/chamados?is_cancelled=false",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"chamados"
+							],
+							"query": [
+								{
+									"key": "is_cancelled",
+									"value": "false"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Atualizar Chamado",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"descricao_cliente\": \"Descrição do problema que o cliente descreveu.\",\r\n    \"numero_serie_equipamento\": \"1411224002524-F01\",\r\n    \"pedido\": \"5314024-1\",\r\n    \"data_faturamento\": \"2025-03-07\",\r\n    \"em_garantia\": true,\r\n    \"id\": 1,\r\n    \"data_abertura\": \"2025-10-24\",\r\n    \"status\": \"Aberto\",\r\n    \"id_tecnico_atribuido\": null,\r\n    \"visitas\": [],\r\n    \"is_cancelled\": false\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/chamados/2",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"chamados",
+								"2"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Deletar Chamado (soft delete)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"cliente\": {\r\n        \"razao_social\": \"Auto Serviço Peixodo LTDA\"\r\n    }\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/chamados/2",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"chamados",
+								"2"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Iniciar Atendimento",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/chamados/1/iniciar-atendimento",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"chamados",
+								"1",
+								"iniciar-atendimento"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Clientes",
+			"item": [
+				{
+					"name": "Novo Cliente",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_1}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"razao_social\": \"AUTO SERVICO PEIXOTO LTDA\",\r\n  \"contato_principal_nome\": \"Karina Silva\",\r\n  \"contato_principal_telefone\": \"27996439718\",\r\n  \"telefone\": \"2732511264\",\r\n  \"endereco\": \"PRACA JOAO MIGUEL\",\r\n  \"numero\": \"132\",\r\n  \"bairro\": \"SERRA CENTRO\",\r\n  \"cidade\": \"SERRA\",\r\n  \"uf\": \"ES\",\r\n  \"codigo\": 55835,\r\n  \"is_active\": true\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/clientes",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"clientes"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Todos Clientes",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"cnpj\": \"12.345.678/0001-99\",\r\n  \"inscricao_estadual\": \"123.456.789.112\",\r\n  \"nome\": \"Paulo Cesar de Souza Refrigeração\",\r\n  \"telefone\": \"27996687821\",\r\n  \"email\": \"eletropaulorefrigeracao@gmail.com\",\r\n  \"password\": \"senhaSuperSecreta123\",\r\n  \"dados_bancarios\": {\r\n    \"banco\": \"Banco do Brasil\",\r\n    \"agencia\": \"1234-5\",\r\n    \"conta\": \"54321-0\",\r\n    \"pix\": \"12345678000199\"\r\n  }\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/clientes",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"clientes"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Buscar Cliente por ID",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"cliente\": {\r\n        \"razao_social\": \"Auto Serviço Peixodo LTDA\",\r\n        \"contato_principal\": {\r\n            \"nome\": \"Karina\",\r\n            \"telefone\": \"(27) 9 9643-9718\"\r\n        },\r\n        \"telefone\": \"(27) 3251-1264\",\r\n        \"endereco\": \"Praça João Miguel\",\r\n        \"numero\": \"132\",\r\n        \"bairro\": \"Serra Centro\",\r\n        \"cidade\": \"Serra\",\r\n        \"uf\": \"ES\",\r\n        \"codigo\": \"55835\",\r\n        \"pedido\": \"5314024-1\",\r\n        \"data_faturamento\": \"2025-03-07\",\r\n        \"em_garantia\": true\r\n    },\r\n    \"descricao_cliente\": \"Equipamento está formando gelo em excesso na parte interna.\",\r\n    \"numero_serie_equipamento\": \"1411224002524-F01\"\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/clientes/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"clientes",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Atualizar Cliente",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"contato_principal\": {\r\n        \"nome\": \"Karina Silva\"\r\n    }, \r\n    \"codigo\": 99999,\r\n    \"is_active\": true\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/clientes/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"clientes",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Deletar Cliente (soft delete)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_tecnico_2}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"cliente\": {\r\n        \"razao_social\": \"Auto Serviço Peixodo LTDA\"\r\n    }\r\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/clientes/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"clientes",
+								"1"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Login (técnico)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "username",
+									"value": "admin@email.com",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "senha1",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login (técnico 2 - teste)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlbGV0cm9wYXVsb3JlZnJpZ2VyYWNhb0BnbWFpbC5jb20iLCJ1c2VyX2lkIjoxLCJleHAiOjE3NjEzNjMxODB9.Jq_FQyCSZ2qDxv0LPhxDMYb1Fb7WRn5jiJSRyD_gXw8",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "username",
+									"value": "tecnico1@email.com",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "senha2",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login (técnico 3 - teste)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlbGV0cm9wYXVsb3JlZnJpZ2VyYWNhb0BnbWFpbC5jb20iLCJ1c2VyX2lkIjoxLCJleHAiOjE3NjEzNjMxODB9.Jq_FQyCSZ2qDxv0LPhxDMYb1Fb7WRn5jiJSRyD_gXw8",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "username",
+									"value": "admin@email.com",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "senha3",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}:{{port}}/api/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"port": "{{port}}",
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Check Health",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}:{{port}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"port": "{{port}}"
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "127.0.0.1"
+		},
+		{
+			"key": "port",
+			"value": "8000"
+		},
+		{
+			"key": "token_tecnico_1",
+			"value": ""
+		},
+		{
+			"key": "token_tecnico_2",
+			"value": ""
+		},
+		{
+			"key": "token_tecnico_3",
+			"value": ""
+		}
+	]
+}

@@ -1,0 +1,21 @@
+# Ambiente Virtual
+.venv/
+venv/
+*/.venv/
+
+# Arquivos de cachê
+__pycache__/
+*.py[cod]
+
+# Coisas da IDE
+.idea/
+
+# DB fake
+*.csv
+
+# Variaveis de ambiente
+.env
+
+static/uploads/*
+
+!static/uploads/.gitkeep

@@ -8,9 +8,23 @@ from app.db.database import SessionLocal
 from app.models.tecnico import Tecnico
 from app.core.security import hash_password
 import random
+from io import BytesIO
+from PIL import Image
 
 client = TestClient(app)
 state = {}  # Memória compartilhada entre os testes
+
+
+def create_test_image(width: int, height: int) -> tuple:
+    """
+    Cria uma imagem de teste em memória com as dimensões especificadas.
+    Retorna uma tupla (filename, content, content_type) compatível com UploadFile.
+    """
+    img = Image.new("RGB", (width, height), color="red")
+    img_bytes = BytesIO()
+    img.save(img_bytes, format="JPEG")
+    img_bytes.seek(0)
+    return (f"test_image_{width}x{height}.jpg", img_bytes.getvalue(), "image/jpeg")
 
 
 # ==========================================
@@ -162,29 +176,69 @@ def test_adicionar_visita_e_servico():
 # 4. FLUXO DE UPLOADS
 # ==========================================
 
-def test_upload_foto_defeito():
-    # Criamos um arquivo falso em memória
-    fake_file = ("foto_defeito.jpg", b"conteudo_imagem", "image/jpeg")
+def test_upload_foto_defeito_valida():
+    """Upload de foto com resolução válida (>= 720p) deve retornar 200"""
+    # Cria uma imagem 1280x720 (720p)
+    valid_image = create_test_image(1280, 720)
 
     response = client.post(
         f"/api/chamados/{state['chamado_id']}/visitas/{state['visita_id']}/servicos/{state['servico_id']}/upload-foto",
         headers=state["headers"],
         data={"tipo": "defeito"},
-        files={"file": fake_file}
+        files={"file": valid_image}
     )
     assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["tipo"] == "defeito"
+    assert data["url"]
+    assert data["id_foto"]
 
 
-def test_upload_foto_conserto():
-    fake_file = ("foto_conserto.jpg", b"conteudo_imagem", "image/jpeg")
+def test_upload_foto_defeito_invalida_resolucao():
+    """Upload de foto com resolução inválida (< 720p) deve retornar 400"""
+    # Cria uma imagem 640x480 (< 720p)
+    invalid_image = create_test_image(640, 480)
+
+    response = client.post(
+        f"/api/chamados/{state['chamado_id']}/visitas/{state['visita_id']}/servicos/{state['servico_id']}/upload-foto",
+        headers=state["headers"],
+        data={"tipo": "defeito"},
+        files={"file": invalid_image}
+    )
+    assert response.status_code == 400
+    assert "Resolução insuficiente" in response.json()["detail"]
+
+
+def test_upload_foto_conserto_valida():
+    """Upload de foto conserto com resolução válida deve retornar 200"""
+    # Cria uma imagem 1920x1080 (FHD)
+    valid_image = create_test_image(1920, 1080)
 
     response = client.post(
         f"/api/chamados/{state['chamado_id']}/visitas/{state['visita_id']}/servicos/{state['servico_id']}/upload-foto",
         headers=state["headers"],
         data={"tipo": "conserto"},
-        files={"file": fake_file}
+        files={"file": valid_image}
     )
     assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["tipo"] == "conserto"
+
+
+def test_get_fotos_servico():
+    """GET /fotos deve retornar lista de fotos defeito e conserto"""
+    response = client.get(
+        f"/api/chamados/{state['chamado_id']}/visitas/{state['visita_id']}/servicos/{state['servico_id']}/fotos",
+        headers=state["headers"]
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "fotos_defeito" in data
+    assert "fotos_conserto" in data
+    assert len(data["fotos_defeito"]) > 0  # Pelo menos uma foto defeito do teste anterior
+    assert len(data["fotos_conserto"]) > 0  # Pelo menos uma foto conserto do teste anterior
 
 
 # ==========================================

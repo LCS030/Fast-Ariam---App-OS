@@ -39,11 +39,26 @@ def check_finalizacao_na_criacao(self) -> 'VisitaBase':
     return self
 
 
-class VisitaCreate(VisitaBase):
+class VisitaCreate(BaseModel):
     """
-    Schema de entrada de uma visita.
+    Schema de entrada (CRIAÇÃO) de uma visita.
+    Todos os campos de tempo são opcionais na criação, pois serão preenchidos progressivamente durante o atendimento.
     """
-    pass
+    data_visita: date = Field(..., example="2025-10-21")
+    hora_inicio_deslocamento: Optional[str] = Field(None, example="08:00", description="Preenchido ao iniciar deslocamento")
+    hora_chegada_cliente: Optional[str] = Field(None, example="09:15", description="Preenchido na chegada")
+    hora_inicio_atendimento: Optional[str] = Field(None, example="09:30", description="Preenchido ao iniciar atendimento")
+    hora_fim_atendimento: Optional[str] = Field(None, example="11:00", description="Preenchido ao finalizar atendimento")
+    km_total: Optional[int] = Field(None, ge=0, description="Total de KMs rodados (ida + volta).")
+    valor_pedagio: float = Field(0.0, ge=0, description="Custo total de pedágios na rota.")
+    valor_frete_devolucao: float = Field(0.0, ge=0, description="Custo de frete para devolução de peças.")
+    descricao_servico_executado: Optional[str] = Field(None, description="Descrição do serviço executado e observações.")
+    servico_finalizado: bool = Field(False, description="O serviço foi finalizado? Falso na criação. Usar PATCH para finalizar.")
+    pendencia: Optional[str] = Field(None, description="Se o serviço não foi finalizado, qual a pendência?")
+    nome_ajudante: Optional[str] = Field(None, example="Carlos Silva", description="Nome do ajudante, se houver.")
+    telefone_ajudante: Optional[str] = Field(None, example="27998887766", description="Telefone do ajudante, se houver.")
+    servicos_realizados: Optional[List[ServicoEquipamento]] = Field(default_factory=list,
+                                                                    description="Lista de trabalhos realizados em cada equipamento")
 
 
 class Visita(VisitaBase):

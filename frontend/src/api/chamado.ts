@@ -41,3 +41,77 @@ export async function concluirChamado(chamadoId: number) {
   const res = await api.post(`/chamados/${chamadoId}/concluir`);
   return res.data;
 }
+
+// -------- UPLOAD DE FOTOS --------
+
+/**
+ * Upload de foto de defeito (antes do reparo)
+ */
+export async function uploadFotoDefeito(
+  chamadoId: number,
+  visitaId: number,
+  servicoId: number,
+  imageUri: string
+): Promise<any> {
+  const formData = new FormData();
+  formData.append("tipo", "defeito");
+  formData.append("file", {
+    uri: imageUri,
+    type: "image/jpeg",
+    name: `foto_defeito_${Date.now()}.jpg`,
+  } as any);
+
+  const res = await api.post(
+    `/chamados/${chamadoId}/visitas/${visitaId}/servicos/${servicoId}/upload-foto`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+  return res.data;
+}
+
+/**
+ * Upload de foto de conserto (após o reparo)
+ */
+export async function uploadFotoConserto(
+  chamadoId: number,
+  visitaId: number,
+  servicoId: number,
+  imageUri: string
+): Promise<any> {
+  const formData = new FormData();
+  formData.append("tipo", "conserto");
+  formData.append("file", {
+    uri: imageUri,
+    type: "image/jpeg",
+    name: `foto_conserto_${Date.now()}.jpg`,
+  } as any);
+
+  const res = await api.post(
+    `/chamados/${chamadoId}/visitas/${visitaId}/servicos/${servicoId}/upload-foto`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+  return res.data;
+}
+
+/**
+ * Busca todas as fotos de um serviço
+ */
+export async function getPhotosServico(
+  chamadoId: number,
+  visitaId: number,
+  servicoId: number
+): Promise<any> {
+  const res = await api.get(
+    `/chamados/${chamadoId}/visitas/${visitaId}/servicos/${servicoId}/fotos`
+  );
+  return res.data;
+}

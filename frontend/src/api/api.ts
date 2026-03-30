@@ -4,7 +4,7 @@ import { getToken, removeToken } from "@/utils/storage";
 import { alertError } from "@/utils/alerts";
 
 const api = axios.create({
-  baseURL: " http://10.0.2.2:8000/api",
+  baseURL: "http://10.0.2.2:8000/api",
   timeout: 15000,
 });
 

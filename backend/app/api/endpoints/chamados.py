@@ -15,7 +15,9 @@ from app.schemas.chamado import Chamado, ChamadoCreate, ChamadoUpdate, StatusCha
 from app.schemas.visita import Visita, VisitaCreate, VisitaUpdate
 from app.schemas.custo import CustoTotalResponse
 from app.services.custo_service import CustoService
-from app.services.file_service import save_upload_file
+from app.services.file_service import save_upload_file, validate_image_resolution
+from app.schemas.foto import ServicoFotoResponse, UploadFotoResponse, ServicoFotoListResponse
+from app.models.servico_equipamento import ServicoEquipamento
 
 router = APIRouter()
 
@@ -80,7 +82,7 @@ def servico_to_dict(servico):
 from app.models.servico_foto import ServicoFoto
 
 
-@router.post("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/upload-foto")
+@router.post("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/upload-foto", response_model=UploadFotoResponse)
 def upload_foto_servico(
         chamado_id: int,
         visita_id: int,
@@ -100,13 +102,59 @@ def upload_foto_servico(
     if chamado.id_tecnico_atribuido != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Acesso negado.")
 
+    # Validar resolução mínima da imagem (720p)
+    validate_image_resolution(file)
+
     prefix = f"servico_{servico_id}_foto_{tipo}"
     file_url = save_upload_file(file, prefix)
 
-    repo.db.add(ServicoFoto(id_servico=servico_id, tipo=tipo, url=file_url))
+    foto_db = ServicoFoto(id_servico=servico_id, tipo=tipo, url=file_url)
+    repo.db.add(foto_db)
     repo.db.commit()
+    repo.db.refresh(foto_db)
 
-    return {"status": "ok", "url": file_url}
+    return UploadFotoResponse(status="ok", url=file_url, tipo=tipo, id_foto=foto_db.id_foto)
+
+
+@router.get("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/fotos", response_model=ServicoFotoListResponse)
+def get_fotos_servico(
+        chamado_id: int,
+        visita_id: int,
+        servico_id: int,
+        repo: SQLRepository = Depends(get_chamado_repository),
+        current_user: dict = Depends(get_current_active_user)
+):
+    """
+    Retorna todas as fotos (defeito e conserto) de um serviço.
+    Técnicos veem apenas suas próprias OS, admins veem todas.
+    """
+    chamado = repo.get_chamado_by_id(chamado_id)
+    if not chamado or chamado.is_cancelled:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado.")
+
+    user_role = current_user.get("role")
+    if user_role != "admin" and chamado.id_tecnico_atribuido != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+
+    # Buscar o serviço
+    servico = repo.db.query(ServicoEquipamento).filter(
+        ServicoEquipamento.id_servico == servico_id,
+        ServicoEquipamento.id_visita == visita_id
+    ).first()
+
+    if not servico:
+        raise HTTPException(status_code=404, detail="Serviço não encontrado.")
+
+    fotos_defeito = [
+        ServicoFotoResponse.model_validate(f) 
+        for f in servico.fotos if f.tipo == "defeito"
+    ]
+    fotos_conserto = [
+        ServicoFotoResponse.model_validate(f) 
+        for f in servico.fotos if f.tipo == "conserto"
+    ]
+
+    return ServicoFotoListResponse(fotos_defeito=fotos_defeito, fotos_conserto=fotos_conserto)
 
 
 @router.post("/", response_model=Chamado, status_code=201)
@@ -437,47 +485,6 @@ def upload_file_visita(
     return visita_atualizada
 
 
-@router.post("/{chamado_id}/visitas/{visita_id}/iniciar-atendimento")
-def iniciar_atendimento(
-        chamado_id: int,
-        visita_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
-):
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita:
-        raise HTTPException(status_code=404, detail="Visita não encontrada")
-
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado")
-
-    logged_user_id = current_user.get("user_id")
-    if chamado.id_tecnico_atribuido != logged_user_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão.")
-
-    # Não deixa iniciar antes de finalizar deslocamento de ida
-    if not visita.hora_fim_ida:
-        raise HTTPException(status_code=400, detail="Finalize o deslocamento de ida antes de iniciar o atendimento.")
-
-    # Evita duplas execuções
-    if visita.hora_inicio_atendimento:
-        raise HTTPException(status_code=400, detail="Atendimento já iniciado.")
-
-    now_time = datetime.now().strftime("%H:%M")
-
-    update = {
-        "hora_inicio_atendimento": now_time
-    }
-
-    visita_editada = repo.update_visita(visita_id, update)
-
-    # Deixa o chamado como em atendimento
-    repo.update_chamado(chamado_id, {"status": StatusChamado.EM_ATENDIMENTO})
-
-    return visita_editada
-
-
 @router.post("/{chamado_id}/visitas/{visita_id}/finalizar-deslocamento")
 def finalizar_deslocamento(
         chamado_id: int,
@@ -505,6 +512,9 @@ def finalizar_deslocamento(
 
     now_time = datetime.now().strftime("%H:%M")
 
+    print(f"[DEBUG FINALIZAR-DESLOCAMENTO] tipo={tipo}, km_fim={km_fim}, visita_id={visita_id}")
+    print(f"[DEBUG] ANTES - hora_inicio_ida={getattr(visita, 'hora_inicio_ida', None)}, hora_fim_ida={getattr(visita, 'hora_fim_ida', None)}, hora_inicio_volta={getattr(visita, 'hora_inicio_volta', None)}, hora_fim_volta={getattr(visita, 'hora_fim_volta', None)}")
+
     if tipo == "ida":
         if not getattr(visita, "hora_inicio_ida", None):
             raise HTTPException(status_code=400, detail="Deslocamento de ida não foi iniciado")
@@ -515,6 +525,7 @@ def finalizar_deslocamento(
             "km_fim_ida": km_fim,
             "hora_fim_ida": now_time
         }
+        print(f"[DEBUG] UPDATE IDA: {update}")
     else:  # volta
         if not getattr(visita, "hora_inicio_volta", None):
             raise HTTPException(status_code=400, detail="Deslocamento de volta não foi iniciado")
@@ -525,14 +536,22 @@ def finalizar_deslocamento(
             "km_fim_volta": km_fim,
             "hora_fim_volta": now_time
         }
+        print(f"[DEBUG] UPDATE VOLTA: {update}")
 
-    # se finalizou deslocamento de volta e visita.servico_finalizado for True, marca chamado como finalizado
+    # Se finalizando a volta, marca como serviço finalizado
+    if tipo == "volta":
+        update["servico_finalizado"] = True
+
     visita_editada = repo.update_visita(visita_id, update)
 
+    print(f"[DEBUG] DEPOIS - hora_inicio_ida={getattr(visita_editada, 'hora_inicio_ida', None)}, hora_fim_ida={getattr(visita_editada, 'hora_fim_ida', None)}, hora_inicio_volta={getattr(visita_editada, 'hora_inicio_volta', None)}, hora_fim_volta={getattr(visita_editada, 'hora_fim_volta', None)}")
+
     if tipo == "volta":
-        # se a visita já estiver finalizada (servico_finalizado True), encerramos a OS
-        if getattr(visita_editada, "servico_finalizado", False):
-            repo.update_chamado(chamado_id, {"status": StatusChamado.FINALIZADO, "data_conclusao": date.today()})
+        # Marca o chamado como finalizado quando volta é finalizada
+        repo.update_chamado(chamado_id, {
+            "status": StatusChamado.FINALIZADO, 
+            "data_conclusao": date.today()
+        })
 
     return visita_editada
 
@@ -585,11 +604,17 @@ def estado_visita(
     if not visita:
         raise HTTPException(status_code=404, detail="Visita não encontrada")
 
-    # Função auxiliar para normalizar o valor
+    # Função auxiliar para normalizar o valor - converte strings vazias para None
     def clean(v):
-        return None if v in (None, "", " ", "  ") else v
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "" or v == " ":
+                return None
+        return v
 
-    # NORMALIZAÇÃO DOS CAMPOS QUE PODEM VIR ""
+    # ===== SISTEMA NOVO (IDA/VOLTA) =====
     hora_inicio_ida = clean(getattr(visita, "hora_inicio_ida", None))
     hora_fim_ida = clean(getattr(visita, "hora_fim_ida", None))
 
@@ -598,6 +623,12 @@ def estado_visita(
 
     hora_inicio_volta = clean(getattr(visita, "hora_inicio_volta", None))
     hora_fim_volta = clean(getattr(visita, "hora_fim_volta", None))
+
+    # DEBUG: Log dos valores BRUTOS do banco
+    print(f"[DEBUG ESTADO - RAW DB] hora_inicio_ida={repr(getattr(visita, 'hora_inicio_ida', None))}, hora_fim_ida={repr(getattr(visita, 'hora_fim_ida', None))}, hora_inicio_atendimento={repr(getattr(visita, 'hora_inicio_atendimento', None))}, hora_fim_atendimento={repr(getattr(visita, 'hora_fim_atendimento', None))}, hora_inicio_volta={repr(getattr(visita, 'hora_inicio_volta', None))}")
+
+    # DEBUG: Log dos valores depois de limpeza
+    print(f"[DEBUG ESTADO - CLEANED] hora_fim_ida={hora_fim_ida}, hora_inicio_atendimento={hora_inicio_atendimento}, hora_fim_atendimento={hora_fim_atendimento}, hora_inicio_volta={hora_inicio_volta}")
 
     estado = {
         # 1) Ida
@@ -616,46 +647,9 @@ def estado_visita(
         "pode_concluir_chamado": hora_fim_volta is not None,
     }
 
+    print(f"[DEBUG ESTADO - FINAL RESULT] {estado}")
+
     return estado
-
-
-@router.post("/{chamado_id}/visitas/{visita_id}/iniciar-atendimento")
-def iniciar_atendimento(
-        chamado_id: int,
-        visita_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
-):
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita:
-        raise HTTPException(status_code=404, detail="Visita não encontrada")
-
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado")
-
-    if chamado.id_tecnico_atribuido != current_user["user_id"]:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para este chamado")
-
-    # Regras
-    if not visita.hora_fim_ida:
-        raise HTTPException(status_code=400, detail="Finalize o deslocamento de ida antes de iniciar o atendimento.")
-
-    if visita.hora_inicio_atendimento:
-        raise HTTPException(status_code=400, detail="O atendimento já foi iniciado")
-
-    now_time = datetime.now().strftime("%H:%M")
-
-    update = {
-        "hora_inicio_atendimento": now_time
-    }
-
-    visita_editada = repo.update_visita(visita_id, update)
-
-    # Chamado passa a EM_ATENDIMENTO
-    repo.update_chamado(chamado_id, {"status": StatusChamado.EM_ATENDIMENTO})
-
-    return visita_editada
 
 
 @router.post("/{chamado_id}/visitas/{visita_id}/iniciar-atendimento")
@@ -790,21 +784,9 @@ def atualizar_servico_equipamento(chamado_id: int, visita_id: int, servico_id: i
 
     return servico_to_dict(servico_atualizado)
 
-
-@router.patch("/{chamado_id}/visitas/{visita_id}", response_model=Visita)
-def atualizar_visita(
-        chamado_id: int,
-        visita_id: int,
-        data: Dict[str, Any],
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role),
-):
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita:
-        raise HTTPException(status_code=404, detail="Visita não encontrada")
-
-    updated = repo.update_visita(visita_id, data)
-    return updated
+# Duplicated simplified PATCH removed. Use the full update implementation
+# `update_visita_e_chamado` / `update_visita_em_chamado` present earlier
+# in this file which enforces business rules (assinatura, odômetro, etc.).
 
 
 @router.post("/{chamado_id}/visitas/{visita_id}/finalizar-dados")
@@ -867,22 +849,19 @@ def finalizar_atendimento(
 
     assinatura_url = f"/static/assinaturas/{filename}"
 
+    # Apenas finaliza o atendimento, NOT the service (servico_finalizado)
+    # servico_finalizado será True apenas quando deslocamento volta for finalizado
     update_data = {
         "assinatura_cliente_url": assinatura_url,
         "nome_cliente": nome_cliente,
         "documento_cliente": documento_cliente,
-        "hora_fim_atendimento": datetime.now().strftime("%H:%M"),
-        "servico_finalizado": True
+        "hora_fim_atendimento": datetime.now().strftime("%H:%M")
     }
 
     repo.update_visita(visita_id, update_data)
 
-    repo.update_chamado(chamado_id, {
-        "status": StatusChamado.FINALIZADO,
-        "data_conclusao": date.today(),
-        "is_completed": True
-    })
-
+    # NÃO marca como finalizado aqui - apenas o atendimento foi finalizado
+    # O chamado será finalizado após deslocamento volta
     repo.db.commit()
 
     return {
@@ -971,7 +950,7 @@ def concluir_chamado(
         raise HTTPException(status_code=403, detail="Você não tem permissão")
 
     repo.update_chamado(chamado_id, {
-        "is_completed": True,
+        "status": StatusChamado.FINALIZADO,
         "data_conclusao": date.today()
     })
 

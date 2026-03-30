@@ -98,6 +98,7 @@ class SubDefeitoEstrutura(str, Enum):
 # noinspection PyArgumentList
 class ServicoEquipamento(BaseModel):
     """Representa um trabalho realizado em um único equipamento durante uma visita."""
+    id_servico: int = Field(..., description="ID único do serviço realizaado no equipamento")
     numero_serie_atendido: str = Field(..., description="Numero de série do equipamento atendido.")
     defeitos_principais: List[TipoDefeitoPrincipal] = Field(default_factory=list,
                                                             description="Lista de categorias principais do defeito.")

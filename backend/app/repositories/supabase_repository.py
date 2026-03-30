@@ -252,6 +252,13 @@ class SQLRepository:
             .joinedload(ServicoEquipamento.materiais_utilizados)
         ).filter(Visita.id_visita == visita_id).first()
 
+    def get_servicos_by_visita(self, visita_id: int) -> list[ServicoEquipamento]:
+        """
+        Retorna todos os serviços associados a uma visita.
+        Usado pelos endpoints que listam serviços de uma visita.
+        """
+        return self.db.query(ServicoEquipamento).filter(ServicoEquipamento.id_visita == visita_id).all()
+
     def update_visita(self, visita_id: int, update_data: dict) -> Optional[Visita]:
         update_data.pop('servicos_realizados', None)
 

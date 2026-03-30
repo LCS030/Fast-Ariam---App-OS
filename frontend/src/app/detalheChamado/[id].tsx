@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 import { Header } from "@/components/header/indexHeader";
@@ -77,6 +77,15 @@ export default function DetalheChamadoScreen() {
       loadEstado(visita.id_visita);
     }
   }, [chamado]);
+
+  // Recarregar dados quando voltar desta tela
+  useFocusEffect(
+    useCallback(() => {
+      // Recarrega apenas o chamado ao focar; o `useEffect` abaixo
+      // observa `chamado` e chama `loadEstado` quando necessário.
+      loadChamado();
+    }, [loadChamado])
+  );
 
   const equipamentos = useMemo(() => {
     if (!chamado) return [];
@@ -165,6 +174,8 @@ export default function DetalheChamadoScreen() {
         await iniciarAtendimentoVisita(chamado.id_os, visita.id_visita);
         Alert.alert("Sucesso", "Atendimento iniciado!");
         await loadChamado();
+        // Recarrega o estado após mudança para refletir pode_finalizar_atendimento
+        await loadEstado(visita.id_visita);
       } catch (err) {
         alertError(err, "Erro ao iniciar atendimento.");
       }
@@ -225,6 +236,76 @@ export default function DetalheChamadoScreen() {
     return "Ação indisponível";
   }
 
+  function handleRegistroFotoDefeito() {
+    console.log("DEBUG handleRegistroFotoDefeito:", { 
+      equipamentos, 
+      firstEquip: equipamentos?.[0],
+      servicoId: equipamentos?.[0]?.id_servico 
+    });
+    
+    if (!visita) return;
+    if (!equipamentos || equipamentos.length === 0) {
+      Alert.alert(
+        "Nenhum Equipamento",
+        "Você precisa registrar pelo menos um equipamento antes de registrar fotos."
+      );
+      return;
+    }
+    
+    const servicoId = equipamentos[0].id_servico;
+    if (!servicoId) {
+      Alert.alert(
+        "Erro",
+        `Equipamento inválido. id_servico: ${servicoId}`
+      );
+      return;
+    }
+    
+    router.push({
+      pathname: "/detalheChamado/RegistroFotoDefeito",
+      params: {
+        chamadoId: String(chamado.id_os),
+        visitaId: String(visita.id_visita),
+        servicoId: String(servicoId),
+      },
+    });
+  }
+
+  function handleRegistroFotoConserto() {
+    console.log("DEBUG handleRegistroFotoConserto:", { 
+      equipamentos, 
+      firstEquip: equipamentos?.[0],
+      servicoId: equipamentos?.[0]?.id_servico 
+    });
+    
+    if (!visita) return;
+    if (!equipamentos || equipamentos.length === 0) {
+      Alert.alert(
+        "Nenhum Equipamento",
+        "Você precisa registrar pelo menos um equipamento antes de registrar fotos."
+      );
+      return;
+    }
+    
+    const servicoId = equipamentos[0].id_servico;
+    if (!servicoId) {
+      Alert.alert(
+        "Erro",
+        `Equipamento inválido. id_servico: ${servicoId}`
+      );
+      return;
+    }
+    
+    router.push({
+      pathname: "/detalheChamado/RegistroFotoConserto",
+      params: {
+        chamadoId: String(chamado.id_os),
+        visitaId: String(visita.id_visita),
+        servicoId: String(servicoId),
+      },
+    });
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <Header leftIconName="arrow-back" onLeftIconPress={() => router.replace("/Home/indexHome")} />
@@ -243,6 +324,29 @@ export default function DetalheChamadoScreen() {
               fontSize={15}
             />
           </View>
+
+          {/* Botões de Registro Fotográfico */}
+          {estado?.pode_iniciar_atendimento && (
+            <View style={{ marginBottom: 12 }}>
+              <Button
+                title="Registrar Foto do Defeito"
+                onPress={handleRegistroFotoDefeito}
+                width="100%"
+                fontSize={14}
+              />
+            </View>
+          )}
+
+          {estado?.pode_finalizar_atendimento && (
+            <View style={{ marginBottom: 12 }}>
+              <Button
+                title="Registrar Foto do Conserto"
+                onPress={handleRegistroFotoConserto}
+                width="100%"
+                fontSize={14}
+              />
+            </View>
+          )}
 
           <Text style={styles.descricao}>
             {chamado.descricao_cliente ?? chamado.descricao ?? "Sem descrição"}
@@ -322,7 +426,5 @@ export default function DetalheChamadoScreen() {
     </View>
   );
 }
-function updateVisita(id_os: any, visitaId: any, arg2: { hora_inicio_atendimento: string; }) {
-  throw new Error("Function not implemented.");
-}
+
 

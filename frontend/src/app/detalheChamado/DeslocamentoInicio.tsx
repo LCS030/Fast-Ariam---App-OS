@@ -56,17 +56,34 @@ export default function DeslocamentoInicioScreen() {
     });
 
   } catch (err: any) {
+    console.error("DEBUG iniciarDeslocamento ERROR:", {
+      status: err?.response?.status,
+      data: err?.response?.data,
+      detail: err?.response?.data?.detail,
+      message: err?.message,
+      full: err
+    });
 
     // Tratamento do alerta com parser
     const detail = err?.response?.data?.detail;
 
-    const msg = Array.isArray(detail)
-        ? detail.map((d: any) => d.msg || JSON.stringify(d)).join("\n")
-        : (typeof detail === "string"
-            ? detail
-            : JSON.stringify(detail, null, 2));
+    let msg = "Erro desconhecido";
+    
+    if (Array.isArray(detail)) {
+      msg = detail.map((d: any) => d.msg || JSON.stringify(d)).join("\n");
+    } else if (typeof detail === "string") {
+      msg = detail;
+    } else if (err?.response?.status === 403) {
+      msg = "Acesso negado. Verifique se você está logado como técnico.";
+    } else if (err?.response?.status === 404) {
+      msg = "Chamado ou visita não encontrados.";
+    } else if (err?.response?.status === 400) {
+      msg = detail || "Dados inválidos enviados.";
+    } else if (err?.message) {
+      msg = err.message;
+    }
 
-    Alert.alert("Erro", msg || "Erro desconhecido");
+    Alert.alert("Erro", msg);
 
     } finally {
     setLoading(false);

@@ -2,7 +2,7 @@ import { View, Text, TextInput, Button, Alert } from "react-native";
 import { AssinaturaCanvas } from "@/components/AssinaturaCanvas/indexAssinaturaCanvas";
 import { useLocalSearchParams, router } from "expo-router";
 import { useState } from "react";
-import api from "@/api/api";
+import { enviarAssinaturaChamado } from "@/api/chamado";
 import { Header } from "@/components/header/indexHeader";
 
 export default function AssinaturaFinalizacao() {
@@ -21,15 +21,12 @@ export default function AssinaturaFinalizacao() {
     try {
       setSaving(true);
 
-      const payload = {
-        nome_cliente: nomeCliente,
-        documento_cliente: documentoCliente,
-        assinatura_base64: signature,
-      };
-
-      await api.post(
-        `/chamados/${chamadoId}/visitas/${visitaId}/finalizar-atendimento`,
-        payload
+      await enviarAssinaturaChamado(
+        Number(chamadoId),
+        Number(visitaId),
+        signature,
+        nomeCliente,
+        documentoCliente
       );
 
       Alert.alert("Sucesso", "Atendimento finalizado!");

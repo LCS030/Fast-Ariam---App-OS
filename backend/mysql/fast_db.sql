@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS ordem_servico (
     pedido VARCHAR(100),
     data_faturamento DATE,
     em_garantia BOOLEAN NOT NULL DEFAULT TRUE,
+    assinatura_cliente_url VARCHAR(255),
     
     FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente),
     FOREIGN KEY (id_tecnico_atribuido) REFERENCES tecnico(id_tecnico)
@@ -80,7 +81,6 @@ CREATE TABLE IF NOT EXISTS visita (
     /* Campos de Upload de Arquivos */
     odometro_inicio_url VARCHAR(255),
     odometro_fim_url VARCHAR(255),
-    assinatura_cliente_url VARCHAR(255),
     comprovante_pedagio_urls JSON NOT NULL DEFAULT (JSON_ARRAY()), /* Armazena uma LISTA de URLs: ["/url1.jpg", "/url2.jpg"] */
     comprovante_frete_urls JSON NOT NULL DEFAULT (JSON_ARRAY()),   /* Armazena uma LISTA de URLs */
     

@@ -1,0 +1,35 @@
+Fluxo Pausar OS
+
+O objetivo é que o técnico possa pausar uma OS, esperar o reagendamento, para fazer uma nova visita
+
+Fluxo simulando o pausa da OS:
+
+- A OS está aberta
+- É agendada uma visita
+- O técnico clica em iniciar deslocamento ida
+- O técnico tira foto do hodômetro do inicio do tipo ida
+- O técnico clica em finalizar deslocamento volta
+- O técnico tira foto do hodômetro do fim tipo ida
+- Aparece o botão de tirar foto do defeito
+- O técnico tira foto do defeito
+- O técnico clica em iniciar atendimento
+- Ao iniciar atendimento e no lugar desse botão pausar atendimento aparece o botão de finalizar atendimento
+- Junto ao passo anterior aparece abaixo dele o botão pausar OS
+- Junto aos dois passos anteriores, quando o técnico clicar em iniciar atendimento o botão de tirar foto do defeito atualizar para tirar foto do conserto
+(até aqui seguirá o fluxo normal)
+- O técnico clica em pausar OS
+- Aparece um modal para ele colocar o motivo da pausa, com campos de seleção predefinidos (motivos) e um campo opcional para uma breve descrição
+- Ele envia o motivo e a OS é pausada, aparecendo assim um alerta de que a OS está pausada
+- Junto ao passo de cima o botão tirar foto conserto desaparece e o botão de finalizar atendimento pula para a etapa de iniciar deslocamento volta, já que a OS não poderá ser finalizada
+- O status da OS ficará como pausado
+- O técnico clica em iniciar deslocamento volta
+- O técnico tira foto do hodômetro do inicio do tipo volta
+- O técnico clica em finalizar deslocamento volta
+- O técnico tira foto do hodômetro do fim tipo volta
+- Após isso, ao invés de aparecer o botão concluir atendimento como no fluxo normal o botão some e fica somente a mensagem de que está aguardado reagendamento
+- A visita será concluída
+- O status da OS mudará para aguardando reagendamento
+- Será feito um novo reagendamento por parte do administrador, o técnico não pode reagendar, e quando o administrador agendar uma data para o reagendamento será gerada uma nova visita para a mesma OS. 
+- Ao receber uma nova data de reagendamento o status da OS mudará para agendado
+- Junto com os itens anteriores o alerta de pausa deve sumir
+- Então, com a OS com o status agendado novamente, o técnico poderá iniciar a nova visita seguindo o fluxo normal (ref fluxo normal)

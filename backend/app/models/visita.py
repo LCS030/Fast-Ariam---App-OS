@@ -32,7 +32,6 @@ class Visita(Base):
     pendencia = Column(Text)
     odometro_inicio_url = Column(String(255))
     odometro_fim_url = Column(String(255))
-    assinatura_cliente_url = Column(String(255))
     # URLs das fotos de deslocamento (ida e volta, início e fim)
     foto_inicio_ida_url = Column(String(255))
     foto_fim_ida_url = Column(String(255))

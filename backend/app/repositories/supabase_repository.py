@@ -311,9 +311,6 @@ class SQLRepository:
                         setattr(visita_db, key, value)
             dados_update_chamado = {}
             if visita_db.servico_finalizado is True:
-                if not visita_db.assinatura_cliente_url:
-                    raise HTTPException(status_code=400,
-                                        detail="Assinatura do cliente é obrigatória para finalizar a visita.")
                 if visita_db.km_total > 0:
                     if not visita_db.odometro_inicio_url or not visita_db.odometro_fim_url:
                         raise HTTPException(status_code=400,

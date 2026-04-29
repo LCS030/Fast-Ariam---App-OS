@@ -19,6 +19,7 @@ class OrdemServico(Base):
     pedido = Column(String(100))
     data_faturamento = Column(Date)
     em_garantia = Column(Boolean, nullable=False, default=True)
+    assinatura_cliente_url = Column(String(255))
     cliente = relationship("Cliente", back_populates="chamados")
     tecnico = relationship("Tecnico", back_populates="chamados")
     visitas = relationship("Visita", back_populates="ordem_servico", cascade="all, delete-orphan")

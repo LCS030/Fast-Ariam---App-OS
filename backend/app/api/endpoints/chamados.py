@@ -31,7 +31,6 @@ if not os.path.exists(ASSINATURA_DIR):
 SINGLE_FILE_FIELDS = [
     "odometro_inicio_url",
     "odometro_fim_url",
-    "assinatura_cliente_url",
     "foto_inicio_ida_url",
     "foto_fim_ida_url",
     "foto_inicio_volta_url",
@@ -364,9 +363,6 @@ def update_visita_em_chamado(
     visita_atualizada_dict = deep_update(visita_db.__dict__, update_data)
 
     if visita_atualizada_dict.get('servico_finalizado') is True:
-        if not visita_atualizada_dict.get('assinatura_cliente_url'):
-            raise HTTPException(status_code=400, detail="Assinatura do cliente é obrigatória para finalizar a visita.")
-
         if visita_atualizada_dict.get('km_total', 0) > 0:
             if not visita_atualizada_dict.get('odometro_inicio_url') or not visita_atualizada_dict.get(
                     'odometro_fim_url'):
@@ -852,13 +848,15 @@ def finalizar_atendimento(
     # Apenas finaliza o atendimento, NOT the service (servico_finalizado)
     # servico_finalizado será True apenas quando deslocamento volta for finalizado
     update_data = {
-        "assinatura_cliente_url": assinatura_url,
         "nome_cliente": nome_cliente,
         "documento_cliente": documento_cliente,
         "hora_fim_atendimento": datetime.now().strftime("%H:%M")
     }
 
     repo.update_visita(visita_id, update_data)
+    
+    # Atualizar a assinatura na ordem_servico
+    repo.update_chamado(chamado_id, {"assinatura_cliente_url": assinatura_url})
 
     # NÃO marca como finalizado aqui - apenas o atendimento foi finalizado
     # O chamado será finalizado após deslocamento volta

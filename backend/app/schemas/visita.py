@@ -72,7 +72,6 @@ class Visita(VisitaBase):
                                                 description="Lista de URLs dos comprovantes de pedágio.")
     comprovante_frete_urls: List[str] = Field(default_factory=list,
                                               description="Lista de URLs dos comprovantes de frete para devolução de peças.")
-    assinatura_cliente_url: Optional[str] = Field(None, description="URL da imagem da assinatura digital do cliente.")
 
     class Config:
         from_attributes = True
@@ -104,7 +103,6 @@ class VisitaUpdate(BaseModel):
     odometro_fim_url: Optional[str] = None
     comprovante_pedagio_urls: Optional[List[str]] = None
     comprovante_frete_urls: Optional[List[str]] = None
-    assinatura_cliente_url: Optional[str] = None
 
 
     @field_validator('comprovante_pedagio_urls', 'comprovante_frete_urls', mode='before')

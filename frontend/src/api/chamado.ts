@@ -115,3 +115,29 @@ export async function getPhotosServico(
   );
   return res.data;
 }
+
+// -------- ASSINATURA DO CLIENTE --------
+
+/**
+ * Envia a assinatura digital do cliente para finalizar o atendimento
+ * A assinatura agora é armazenada na ordem de serviço (OS/Chamado)
+ */
+export async function enviarAssinaturaChamado(
+  chamadoId: number,
+  visitaId: number,
+  signatureBase64: string,
+  nomeCliente: string,
+  documentoCliente: string
+): Promise<any> {
+  const payload = {
+    assinatura_base64: signatureBase64,
+    nome_cliente: nomeCliente,
+    documento_cliente: documentoCliente
+  };
+
+  const res = await api.post(
+    `/chamados/${chamadoId}/visitas/${visitaId}/finalizar-atendimento`,
+    payload
+  );
+  return res.data;
+}

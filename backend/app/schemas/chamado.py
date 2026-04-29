@@ -26,6 +26,7 @@ class Chamado(ChamadoBase):
     data_abertura: date
     id_tecnico_atribuido: Optional[int] = None
     data_agendamento: Optional[date] = None
+    assinatura_cliente_url: Optional[str] = Field(None, description="URL da imagem da assinatura digital do cliente.")
     visitas: List[Visita] = Field(default_factory=list)
     is_cancelled: bool = False
 
@@ -41,3 +42,4 @@ class ChamadoUpdate(BaseModel):
     status: Optional[StatusChamado] = None
     is_cancelled: Optional[bool] = None
     data_conclusao: Optional[date] = None
+    assinatura_cliente_url: Optional[str] = Field(None, description="URL da imagem da assinatura digital do cliente.")

@@ -544,10 +544,20 @@ def finalizar_deslocamento(
 
     if tipo == "volta":
         # Marca o chamado como finalizado quando volta é finalizada
-        repo.update_chamado(chamado_id, {
-            "status": StatusChamado.FINALIZADO, 
-            "data_conclusao": date.today()
-        })
+        # Se houver pausa ativa, manter em aguardando reagendamento
+        try:
+            pausas = repo.get_pausas_by_visita(visita_id)
+        except Exception:
+            pausas = []
+
+        is_pausada = any(getattr(p, 'is_ativa', False) for p in pausas)
+        if is_pausada:
+            repo.update_chamado(chamado_id, {"status": StatusChamado.AGUARDANDO_REAGENDAMENTO})
+        else:
+            repo.update_chamado(chamado_id, {
+                "status": StatusChamado.FINALIZADO,
+                "data_conclusao": date.today()
+            })
 
     return visita_editada
 
@@ -643,6 +653,37 @@ def estado_visita(
         "pode_concluir_chamado": hora_fim_volta is not None,
     }
 
+    # Verifica pausas ativas para esta visita
+    try:
+        pausas = repo.get_pausas_by_visita(visita_id)
+    except Exception:
+        pausas = []
+
+    is_pausada = any(getattr(p, 'is_ativa', False) for p in pausas)
+    motivo_pausa = None
+    if is_pausada:
+        # pega a última pausa ativa
+        for p in reversed(pausas):
+            if getattr(p, 'is_ativa', False):
+                motivo_pausa = getattr(p, 'motivo', None)
+                break
+
+    # Permite pausar se já estiver em atendimento e não estiver pausada
+    pode_pausar = (hora_inicio_atendimento is not None and hora_fim_atendimento is None and not is_pausada)
+
+    estado.update({
+        "pode_pausar_os": pode_pausar,
+        "is_os_pausada": is_pausada,
+        "motivo_pausa": motivo_pausa
+    })
+
+    # Se a visita estiver pausada, não permitir finalizar atendimento.
+    # Se estiver pausada e a volta ainda não foi iniciada, permitir iniciar deslocamento de volta.
+    if is_pausada:
+        estado["pode_finalizar_atendimento"] = False
+        if hora_inicio_volta is None:
+            estado["pode_iniciar_deslocamento_volta"] = True
+
     print(f"[DEBUG ESTADO - FINAL RESULT] {estado}")
 
     return estado
@@ -687,6 +728,81 @@ def iniciar_atendimento_visita(
     repo.update_chamado(chamado_id, {"status": StatusChamado.EM_ATENDIMENTO})
 
     return visita_atualizada
+
+
+@router.post("/{chamado_id}/visitas/{visita_id}/pausar")
+def pausar_visita(
+        chamado_id: int,
+        visita_id: int,
+        payload: Dict[str, Any] = Body(...),
+        repo: SQLRepository = Depends(get_chamado_repository),
+        current_user: dict = Depends(require_technician_role)
+):
+    """Registra uma pausa para a visita e atualiza o status do chamado para PAUSADO.
+    Payload: { motivo: str, descricao?: str }
+    """
+    chamado = repo.get_chamado_by_id(chamado_id)
+    if not chamado or chamado.is_cancelled:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado")
+
+    logged_user_id = current_user.get("user_id")
+    user_role = current_user.get("role")
+    if user_role == "tecnico" and chamado.id_tecnico_atribuido != logged_user_id:
+        raise HTTPException(status_code=403, detail="Você não tem permissão para pausar este chamado.")
+
+    visita = repo.get_visita_by_id(visita_id)
+    if not visita or visita.id_os != chamado_id:
+        raise HTTPException(status_code=404, detail="Visita não encontrada neste chamado")
+
+    # Só permite pausar se estiver em atendimento (iniciado, não finalizado)
+    if not getattr(visita, 'hora_inicio_atendimento', None) or getattr(visita, 'hora_fim_atendimento', None):
+        raise HTTPException(status_code=400, detail="Só é possível pausar uma visita que esteja em atendimento.")
+
+    motivo = payload.get('motivo')
+    if not motivo:
+        raise HTTPException(status_code=400, detail="Motivo da pausa é obrigatório.")
+    descricao = payload.get('descricao')
+
+    pausa = repo.create_pausa(visita_id, {"motivo": motivo, "descricao": descricao}, por_tecnico_id=(logged_user_id if user_role == 'tecnico' else None))
+
+    return {
+        "status": "ok",
+        "id_pausa": pausa.id_pausa,
+        "visita_id": pausa.visita_id,
+        "motivo": pausa.motivo,
+        "descricao": pausa.descricao,
+        "criado_em": pausa.criado_em.isoformat() if getattr(pausa, 'criado_em', None) else None,
+        "is_ativa": pausa.is_ativa
+    }
+
+
+@router.post("/{chamado_id}/reagendar", response_model=Visita)
+def reagendar_chamado(
+        chamado_id: int,
+        visita_in: VisitaCreate,
+        repo: SQLRepository = Depends(get_chamado_repository),
+        _admin_user: dict = Depends(require_admin_role)
+):
+    """Cria uma nova visita para o chamado (reagendamento) e limpa pausas ativas.
+    Apenas admins podem chamar este endpoint.
+    """
+    chamado = repo.get_chamado_by_id(chamado_id)
+    if not chamado or chamado.is_cancelled:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado")
+
+    visita_data = visita_in.model_dump()
+    visita_db = repo.create_visita(chamado_id, visita_data)
+
+    # Marca pausas antigas como resolvidas/inativas
+    try:
+        repo.resolve_pausas_for_chamado(chamado_id)
+    except Exception:
+        pass
+
+    # Atualiza status do chamado para AGENDADO
+    repo.update_chamado(chamado_id, {"status": StatusChamado.AGENDADO})
+
+    return visita_db
 
 
 @router.get("/{chamado_id}/visitas/{visita_id}/servicos")
@@ -832,6 +948,14 @@ def finalizar_atendimento(
     if not visita:
         raise HTTPException(status_code=404, detail="Visita não encontrada")
 
+    # Bloqueia finalização do atendimento se houver pausa ativa
+    try:
+        pausas = repo.get_pausas_by_visita(visita_id)
+    except Exception:
+        pausas = []
+    if any(getattr(p, 'is_ativa', False) for p in pausas):
+        raise HTTPException(status_code=400, detail="Não é possível finalizar o atendimento enquanto a OS estiver pausada.")
+
     if assinatura_base64.startswith("data:image"):
         assinatura_base64 = assinatura_base64.split(",")[1]
 
@@ -909,7 +1033,15 @@ def iniciar_deslocamento(
         }
 
     if tipo == "volta":
-        if not getattr(visita, "hora_fim_atendimento", None):
+        # Permite iniciar deslocamento de volta se o atendimento foi finalizado
+        # OU se a visita estiver pausada (caso em que o técnico retorna sem finalizar atendimento)
+        try:
+            pausas = repo.get_pausas_by_visita(visita_id)
+        except Exception:
+            pausas = []
+        is_pausada = any(getattr(p, 'is_ativa', False) for p in pausas)
+
+        if not getattr(visita, "hora_fim_atendimento", None) and not is_pausada:
             raise HTTPException(
                 status_code=400,
                 detail="Finalize o atendimento antes de iniciar o deslocamento de volta"

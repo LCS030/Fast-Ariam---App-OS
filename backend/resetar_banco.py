@@ -1,7 +1,7 @@
 from app.db.database import engine, Base
 # Importar todos os modelos para ele saber o que apagar/criar
 from app.models import tecnico, cliente, chamado, visita, servico_equipamento, material, comprovante, servico_defeito, \
-    servico_foto
+    servico_foto, pausa
 from seed import semear_banco
 
 

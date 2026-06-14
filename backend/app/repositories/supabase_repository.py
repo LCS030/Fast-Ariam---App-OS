@@ -17,6 +17,7 @@ from app.repositories.in_memory_repository import deep_update
 from app.models.comprovante import Comprovante
 from app.models.servico_defeito import ServicoDefeito
 from app.models.servico_foto import ServicoFoto
+from app.models.pausa import Pausa
 
 
 class SQLRepository:
@@ -258,6 +259,38 @@ class SQLRepository:
         Usado pelos endpoints que listam serviços de uma visita.
         """
         return self.db.query(ServicoEquipamento).filter(ServicoEquipamento.id_visita == visita_id).all()
+
+    def create_pausa(self, visita_id: int, pausa_data: dict, por_tecnico_id: Optional[int] = None) -> Pausa:
+        visita = self.get_visita_by_id(visita_id)
+        if not visita:
+            raise HTTPException(status_code=404, detail="Visita não encontrada")
+
+        motivo = pausa_data.get("motivo")
+        descricao = pausa_data.get("descricao")
+
+        pausa = Pausa(visita_id=visita_id, motivo=motivo, descricao=descricao, por_tecnico_id=por_tecnico_id,
+                      is_ativa=True)
+        self.db.add(pausa)
+        # Atualiza status do chamado associado para PAUSADO
+        self.db.query(OrdemServico).filter(OrdemServico.id_os == visita.id_os).update({"status": StatusChamado.PAUSADO.value})
+        self.db.commit()
+        self.db.refresh(pausa)
+        return pausa
+
+    def get_pausas_by_visita(self, visita_id: int) -> list[Pausa]:
+        return self.db.query(Pausa).filter(Pausa.visita_id == visita_id).all()
+
+    def resolve_pausas_for_chamado(self, chamado_id: int) -> int:
+        """Marca todas as pausas ativas das visitas pertencentes a um chamado como inativas.
+        Retorna o número de registros alterados.
+        """
+        visitas = self.db.query(Visita).filter(Visita.id_os == chamado_id).all()
+        visita_ids = [v.id_visita for v in visitas]
+        if not visita_ids:
+            return 0
+        rows_updated = self.db.query(Pausa).filter(Pausa.visita_id.in_(visita_ids), Pausa.is_ativa == True).update({"is_ativa": False})
+        self.db.commit()
+        return rows_updated
 
     def update_visita(self, visita_id: int, update_data: dict) -> Optional[Visita]:
         update_data.pop('servicos_realizados', None)

@@ -25,6 +25,8 @@ class StatusChamado(str, Enum):
     EM_ATENDIMENTO = "Em Atendimento"
     PENDENTE = "Pendente"
     FINALIZADO = "Finalizado"
+    PAUSADO = "Pausado"
+    AGUARDANDO_REAGENDAMENTO = "Aguardando Reagendamento"
 
 
 class TipoDefeitoPrincipal(str, Enum):

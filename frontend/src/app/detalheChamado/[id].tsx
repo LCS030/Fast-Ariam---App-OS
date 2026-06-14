@@ -13,7 +13,8 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { Header } from "@/components/header/indexHeader";
 import { CardEquipamento } from "@/components/CardEquipamento/indexCardEquipamento";
 import { concluirChamado, getChamadoPorId } from "@/api/chamado";
-import { enviarAssinatura, getEstadoVisita, iniciarAtendimentoVisita } from "@/api/visitas";
+import { enviarAssinatura, getEstadoVisita, iniciarAtendimentoVisita, pausarVisita } from "@/api/visitas";
+import { PausaModal } from "@/components/PausaModal/indexPausaModal";
 import { Button } from "@/components/button/indexButton";
 import { alertError } from "@/utils/alerts";
 import { styles } from "@/styles/styleDetalheChamado";
@@ -38,6 +39,7 @@ export default function DetalheChamadoScreen() {
 
   const [estado, setEstado] = useState<any | null>(null);
   const [loadingEstado, setLoadingEstado] = useState(true);
+  const [showPausaModal, setShowPausaModal] = useState(false);
 
   const loadChamado = useCallback(async () => {
     try {
@@ -153,6 +155,20 @@ export default function DetalheChamadoScreen() {
 
     const visitaId = visita.id_visita;
 
+    // Se a OS estiver pausada, prioriza iniciar deslocamento volta
+    if (estado.is_os_pausada) {
+      if (estado.pode_iniciar_deslocamento_volta) {
+        router.push({
+          pathname: "/detalheChamado/DeslocamentoInicio",
+          params: { chamadoId: chamado.id_os, visitaId, tipo: "volta" },
+        });
+        return;
+      }
+
+      Alert.alert("OS pausada", "A OS está pausada. Aguardando reagendamento.");
+      return;
+    }
+
     if (estado.pode_iniciar_deslocamento_ida) {
       router.push({
         pathname: "/detalheChamado/DeslocamentoInicio",
@@ -206,7 +222,8 @@ export default function DetalheChamadoScreen() {
       return;
     }
 
-    if (estado.pode_concluir_chamado) {
+    // Guarda contra conclusão de OS pausada
+    if (estado.pode_concluir_chamado && !estado.is_os_pausada) {
       try {
         await concluirChamado(chamado.id_os);
 
@@ -224,6 +241,12 @@ export default function DetalheChamadoScreen() {
 
   function getTextoBotao() {
     if (!estado) return "Aguarde...";
+
+    // Prioriza texto de deslocamento volta quando OS está pausada
+    if (estado.is_os_pausada && estado.pode_iniciar_deslocamento_volta) return "Iniciar deslocamento";
+
+    // Quando OS está pausada e volta foi completado, mostra mensagem de reagendamento
+    if (estado.is_os_pausada && estado.pode_concluir_chamado) return "Aguardando reagendamento...";
 
     if (estado.pode_iniciar_deslocamento_ida) return "Iniciar deslocamento";
     if (estado.pode_finalizar_deslocamento_ida) return "Finalizar deslocamento";
@@ -306,6 +329,19 @@ export default function DetalheChamadoScreen() {
     });
   }
 
+  async function handleSubmitPausa(payload: { motivo: string; descricao?: string }) {
+    if (!visita) return;
+    try {
+      await pausarVisita(chamado.id_os, visita.id_visita, payload.motivo, payload.descricao);
+      setShowPausaModal(false);
+      Alert.alert("OS pausada", "Pausa registrada com sucesso.");
+      await loadChamado();
+      await loadEstado(visita.id_visita);
+    } catch (err) {
+      alertError(err, "Falha ao registrar pausa.");
+    }
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <Header leftIconName="arrow-back" onLeftIconPress={() => router.replace("/Home/indexHome")} />
@@ -317,13 +353,35 @@ export default function DetalheChamadoScreen() {
           <Text style={styles.osTitle}>OS #{chamado.pedido ?? chamado.id_os}</Text>
 
           <View style={{ marginTop: 8, marginBottom: 12 }}>
-            <Button
-              title={getTextoBotao()}
-              onPress={handleAcaoPrincipal}
-              width="100%"
-              fontSize={15}
-            />
+            {estado?.is_os_pausada && estado?.pode_concluir_chamado ? (
+              <View style={{ padding: 12, backgroundColor: colors.blue[500], borderRadius: 8, borderLeftWidth: 4, borderLeftColor: colors.blue[500] }}>
+                <Text style={{ color: colors.blue[900], fontSize: 15, fontWeight: "600", textAlign: "center" }}>
+                  OS pausada - Aguardando reagendamento
+                </Text>
+              </View>
+            ) : (
+              <Button
+                title={getTextoBotao()}
+                onPress={handleAcaoPrincipal}
+                width="100%"
+                fontSize={15}
+              />
+            )}
           </View>
+
+          {estado?.pode_pausar_os && (
+            <View style={{ marginTop: 8, marginBottom: 12 }}>
+              <Button title="Pausar OS" onPress={() => setShowPausaModal(true)} width="100%" fontSize={14} />
+            </View>
+          )}
+
+          {estado?.is_os_pausada && (
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ color: colors.red[500], fontWeight: "700" }}>
+                OS pausada: {estado?.motivo_pausa ?? "Motivo não informado"}
+              </Text>
+            </View>
+          )}
 
           {/* Botões de Registro Fotográfico */}
           {estado?.pode_iniciar_atendimento && (
@@ -337,7 +395,7 @@ export default function DetalheChamadoScreen() {
             </View>
           )}
 
-          {estado?.pode_finalizar_atendimento && (
+          {estado?.pode_finalizar_atendimento && !estado?.is_os_pausada && (
             <View style={{ marginBottom: 12 }}>
               <Button
                 title="Registrar Foto do Conserto"
@@ -347,6 +405,8 @@ export default function DetalheChamadoScreen() {
               />
             </View>
           )}
+
+          <PausaModal visible={showPausaModal} onCancel={() => setShowPausaModal(false)} onSubmit={handleSubmitPausa} />
 
           <Text style={styles.descricao}>
             {chamado.descricao_cliente ?? chamado.descricao ?? "Sem descrição"}

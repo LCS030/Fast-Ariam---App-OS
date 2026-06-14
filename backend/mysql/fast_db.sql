@@ -120,3 +120,16 @@ CREATE TABLE IF NOT EXISTS material (
     
     FOREIGN KEY (id_servico) REFERENCES servico_equipamento(id_servico) ON DELETE CASCADE
 );
+
+/* --- Tabela de Pausas (histórico de pausas por visita) --- */
+CREATE TABLE IF NOT EXISTS pausa (
+    id_pausa INT PRIMARY KEY AUTO_INCREMENT,
+    visita_id INT NOT NULL,
+    motivo VARCHAR(100) NOT NULL,
+    descricao TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    por_tecnico_id INT,
+    is_ativa BOOLEAN NOT NULL DEFAULT TRUE,
+    FOREIGN KEY (visita_id) REFERENCES visita(id_visita) ON DELETE CASCADE,
+    FOREIGN KEY (por_tecnico_id) REFERENCES tecnico(id_tecnico)
+);

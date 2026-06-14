@@ -100,4 +100,14 @@ export async function enviarAssinatura(chamadoId: number, visitaId: number, sign
   return res.data;
 }
 
+export async function pausarVisita(chamadoId: number, visitaId: number, motivo: string, descricao?: string) {
+  const token = await getToken();
+  const payload: any = { motivo };
+  if (descricao) payload.descricao = descricao;
+  const res = await api.post(`/chamados/${chamadoId}/visitas/${visitaId}/pausar`, payload, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data;
+}
+
 

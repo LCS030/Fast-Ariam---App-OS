@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.db.database import engine, Base
-from app.models import tecnico, cliente, chamado, visita, servico_equipamento, material, comprovante, servico_defeito, servico_foto
+from app.models import tecnico, cliente, chamado, visita, servico_equipamento, material, comprovante, servico_defeito, servico_foto, pausa
 
 Base.metadata.create_all(bind=engine)
 

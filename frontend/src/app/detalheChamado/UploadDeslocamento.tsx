@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, Button, Image, Alert, ActivityIndicator } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { uploadDeslocamento } from "@/api/visitas";
+import { uploadDeslocamento, getEstadoVisita } from "@/api/visitas";
 import { Header } from "@/components/header/indexHeader"
 
 export default function UploadDeslocamentoScreen() {
@@ -53,6 +53,22 @@ console.log("Tipo ===>", tipo);
             tipo,
             momento
         );
+      
+      // Após upload bem-sucedido, verifica se a OS está pausada
+      try {
+        const estado = await getEstadoVisita(chamadoId, visitaId);
+        if (estado?.is_os_pausada && tipo === "volta" && momento === "fim") {
+          Alert.alert(
+            "Visitação Pausada",
+            "A OS está pausada e aguardando reagendamento do administrador. Você pode navegar para trás.",
+            [{ text: "OK", onPress: () => router.replace(`/detalheChamado/${chamadoId}`) }]
+          );
+          return;
+        }
+      } catch (err) {
+        console.log("Erro ao verificar estado", err);
+      }
+      
       Alert.alert("Ok", "Foto enviada com sucesso.");
       router.replace(`/detalheChamado/${chamadoId}`);
     } catch (err: any) {

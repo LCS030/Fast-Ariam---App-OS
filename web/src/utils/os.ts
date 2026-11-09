@@ -1,9 +1,6 @@
 import { OrdemServico, Visita } from '../types';
 import { ApiError } from '../services/apiClient';
 
-/** Base da API para montar URLs de arquivos (fotos/assinaturas servidas em /static). */
-const API_BASE = ((import.meta as any).env?.VITE_API_URL as string) || '';
-
 /**
  * Código amigável da OS (OS-AAAA-NNNN).
  * PENDÊNCIA DE DECISÃO (PR-16): hoje é montado no front e NÃO é persistido.
@@ -65,20 +62,11 @@ export function hojeISO(): string {
 }
 
 /**
- * PONTO ÚNICO de resolução de URL de arquivo (fotos, comprovantes, assinaturas). Toda `<img src>` do painel passa por aqui.
- * URLs relativas devolvidas pela API (ex.: /static/uploads/...) usam a base da API.
- *
- * TODO (SEG-09 / PR-03 / A1): hoje o backend serve /static publicamente, então `<img src>` com URL direta funciona.
- * Quando o backend proteger os arquivos (bucket privado), trocar esta função por uma das opções:
- *  (a) URL assinada de curta duração emitida pela API (preferível: continua sendo `<img src>`), ou
- *  (b) fetch com `Authorization: Bearer` + `URL.createObjectURL(blob)` (exige tornar a função assíncrona/hook).
- * Nenhum outro ponto do painel deve montar URL de arquivo.
+ * ARQUIVOS (fotos, comprovantes, assinaturas): ficam em armazenamento PRIVADO e NÃO têm mais URL pública. A referência que a API
+ * devolve (`/static/uploads/...`) é só um identificador. Para exibir, use <FotoSegura> (fotos) ou <AssinaturaImagem>
+ * (assinatura): ambos buscam o arquivo pela API com o token e mostram por uma URL `blob:`. Nunca monte `<img src>` com a
+ * referência: não existe `/static`.
  */
-export function resolverUrlArquivo(url?: string | null): string {
-  if (!url) return '';
-  if (/^(https?:|data:|blob:)/i.test(url)) return url;
-  return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
-}
 
 /** Mensagem legível de erro da API (inclui 409/422 do servidor). */
 export function mensagemErro(err: unknown, padrao = 'Não foi possível concluir a operação.'): string {

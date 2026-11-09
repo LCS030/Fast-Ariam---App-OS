@@ -3,7 +3,8 @@ import { FotoServico, MaterialUtilizado, OrdemServico, ServicoEquipamento, Visit
 import { ChamadoService } from '../services/chamadoService';
 import { useAcaoAssincrona } from '../hooks/useAcaoAssincrona';
 import { ConfirmDialog } from './ConfirmDialog';
-import { formatData, formatMoeda, mensagemErro, resolverUrlArquivo } from '../utils/os';
+import { formatData, formatMoeda, mensagemErro } from '../utils/os';
+import { FotoSegura } from './FotoSegura';
 import { AlertCircle, ArrowRight, CheckCircle2, ImagePlus, Info, Loader2, Plus, Save, Trash2, Wrench, ZoomIn } from 'lucide-react';
 
 /** Resultado do recálculo do custo após corrigir materiais (SDD 6.13). */
@@ -215,7 +216,7 @@ const ServicoCorrecao: React.FC<{
                   onClick={() => onAbrirFoto(`${titulo} ${k + 1} • ${rotulo}`, f.url)}
                   className="group relative block w-full aspect-video rounded-lg overflow-hidden bg-secondary border border-border cursor-pointer"
                 >
-                  <img src={resolverUrlArquivo(f.url)} alt={`${titulo} ${k + 1}`} loading="lazy" className="w-full h-full object-cover" />
+                  <FotoSegura idOs={os.id_os} url={f.url} alt={`${titulo} ${k + 1}`} className="w-full h-full object-cover" />
                   <span className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                     <ZoomIn className="w-5 h-5" />
                   </span>

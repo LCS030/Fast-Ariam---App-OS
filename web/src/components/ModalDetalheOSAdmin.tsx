@@ -13,6 +13,8 @@ import { ModalPausa } from './ModalPausa';
 import { ModalCancelarOS } from './ModalCancelarOS';
 import { ModalReagendar } from './ModalReagendar';
 import { SecaoEquipamentosOS } from './SecaoEquipamentosOS';
+import { AssinaturaImagem } from './AssinaturaImagem';
+import { FotoSegura } from './FotoSegura';
 import { AjusteCusto, CorrecaoAdministrativaOS } from './CorrecaoAdministrativaOS';
 import { ChamadoService } from '../services/chamadoService';
 import {
@@ -27,7 +29,6 @@ import {
   permissaoPausar,
   permissaoReagendar,
   podeCancelar,
-  resolverUrlArquivo,
   visitaAtual,
 } from '../utils/os';
 import {
@@ -97,7 +98,7 @@ const Secao: React.FC<{ titulo: string; icone: React.ReactNode; children: React.
   </div>
 );
 
-const GaleriaFotos: React.FC<{ fotos: Foto[]; onOpen: (f: Foto) => void }> = ({ fotos, onOpen }) => {
+const GaleriaFotos: React.FC<{ idOs: number; fotos: Foto[]; onOpen: (f: Foto) => void }> = ({ idOs, fotos, onOpen }) => {
   if (fotos.length === 0) {
     return <p className="text-[11px] text-muted-foreground">Nenhuma foto registrada.</p>;
   }
@@ -114,7 +115,7 @@ const GaleriaFotos: React.FC<{ fotos: Foto[]; onOpen: (f: Foto) => void }> = ({ 
             {f.titulo}
           </span>
           <span className="relative block aspect-video rounded-lg overflow-hidden bg-secondary border border-border">
-            <img src={resolverUrlArquivo(f.url)} alt={f.titulo} loading="lazy" className="w-full h-full object-cover" />
+            <FotoSegura idOs={idOs} url={f.url} alt={f.titulo} className="w-full h-full object-cover" />
             <span className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
               <ZoomIn className="w-5 h-5" />
             </span>
@@ -630,7 +631,7 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                         )}
 
                         <Secao titulo="Fotos e comprovantes" icone={<ImageIcon className="w-4 h-4" />}>
-                          <GaleriaFotos fotos={fotosDaVisita(v)} onOpen={setFoto} />
+                          <GaleriaFotos idOs={os.id_os} fotos={fotosDaVisita(v)} onOpen={setFoto} />
                         </Secao>
 
                         <Secao titulo={`Serviços por equipamento (${servicos.length})`} icone={<Wrench className="w-4 h-4" />}>
@@ -728,7 +729,7 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
 
                                     {fotos.length > 0 && (
                                       <div className="pt-2 border-t border-border">
-                                        <GaleriaFotos fotos={fotos} onOpen={setFoto} />
+                                        <GaleriaFotos idOs={os.id_os} fotos={fotos} onOpen={setFoto} />
                                       </div>
                                     )}
                                   </div>
@@ -757,17 +758,11 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                                   </button>
                                 </p>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => setFoto({ titulo: 'Assinatura do cliente', url: v.assinatura_url as string })}
-                                className="bg-secondary p-2.5 rounded-xl border border-border cursor-pointer"
-                              >
-                                <img
-                                  src={resolverUrlArquivo(v.assinatura_url)}
-                                  alt="Assinatura do cliente"
-                                  className="h-14 object-contain"
-                                />
-                              </button>
+                              <AssinaturaImagem
+                                idOs={os.id_os}
+                                idVisita={v.id_visita}
+                                onAbrir={(url) => setFoto({ titulo: 'Assinatura do cliente', url })}
+                              />
                             </div>
                           ) : (
                             <p className="text-[11px] text-muted-foreground">Assinatura não coletada nesta visita.</p>
@@ -827,11 +822,22 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                 <X className="w-6 h-6" />
               </button>
             </div>
-            <img
-              src={resolverUrlArquivo(foto.url)}
-              alt={foto.titulo}
-              className="max-h-[75vh] w-auto mx-auto rounded-2xl border border-white/20 shadow-2xl object-contain"
-            />
+            {foto.url.startsWith('blob:') ? (
+              <img
+                src={foto.url}
+                alt={foto.titulo}
+                className="max-h-[75vh] w-auto mx-auto rounded-2xl border border-white/20 shadow-2xl object-contain"
+              />
+            ) : (
+              <div className="min-h-[8rem] flex items-center justify-center text-white">
+                <FotoSegura
+                  idOs={os.id_os}
+                  url={foto.url}
+                  alt={foto.titulo}
+                  className="max-h-[75vh] w-auto mx-auto rounded-2xl border border-white/20 shadow-2xl object-contain"
+                />
+              </div>
+            )}
           </div>
         </div>
       )}

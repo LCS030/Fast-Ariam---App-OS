@@ -36,6 +36,17 @@ export interface UserTokenPayload {
   exp?: number;
 }
 
+/** SHA-256 (hex minúsculo) dos bytes do arquivo, calculado no navegador (exige contexto seguro: HTTPS ou localhost). */
+async function sha256Hex(arquivo: Blob): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new ApiError(0, 'Este navegador não permite calcular o hash do arquivo (use HTTPS).');
+  }
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', await arquivo.arrayBuffer());
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 export class ApiError extends Error {
   status: number;
   detail: string;
@@ -382,7 +393,7 @@ class ApiClient {
     return this.request(`/api/chamados/${idOs}/visitas/${idVisita}/servicos/${idServico}/fotos`);
   }
 
-  uploadFotoServico(
+  async uploadFotoServico(
     idOs: number,
     idVisita: number,
     idServico: number,
@@ -391,6 +402,7 @@ class ApiClient {
   ): Promise<{ status: string; url: string; tipo: string; id_foto?: number | null }> {
     const body = new FormData();
     body.append('tipo', tipo);
+    body.append('sha256', await sha256Hex(arquivo)); // Integridade: o servidor recalcula e recusa (422) se divergir
     body.append('file', arquivo);
     return this.request(`/api/chamados/${idOs}/visitas/${idVisita}/servicos/${idServico}/upload-foto`, {
       method: 'POST',
@@ -427,6 +439,44 @@ class ApiClient {
   // --- Visitas ---
   getEstadoVisita(idOs: number, idVisita: number): Promise<EstadoVisitaResponse> {
     return this.request<EstadoVisitaResponse>(`/api/chamados/${idOs}/visitas/${idVisita}/estado`);
+  }
+
+  /** Baixa um arquivo protegido da API com o token (as rotas de arquivo exigem `Authorization`). */
+  private async baixarBlob(caminho: string, mensagemPadrao: string): Promise<Blob> {
+    const token = this.getToken();
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}${caminho}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    } catch (e: any) {
+      throw new ApiError(0, e?.message || 'Falha de conexão com a API.');
+    }
+    if (!response.ok) {
+      let detail = mensagemPadrao;
+      try {
+        const corpo = await response.json();
+        if (typeof corpo?.detail === 'string') detail = corpo.detail;
+      } catch {
+        /* corpo sem JSON: mantém a mensagem padrão */
+      }
+      throw new ApiError(response.status, detail);
+    }
+    return response.blob();
+  }
+
+  /** Imagem da assinatura do cliente (cifrada em disco; a API a decifra e só entrega a admin/técnico da OS). */
+  baixarAssinatura(idOs: number, idVisita: number): Promise<Blob> {
+    return this.baixarBlob(`/api/chamados/${idOs}/visitas/${idVisita}/assinatura`, 'Não foi possível carregar a assinatura.');
+  }
+
+  /**
+   * Foto/comprovante da OS vindo do armazenamento privado. `url` é a referência devolvida pela API (`/static/uploads/...`),
+   * que NÃO é mais um endereço público: a API confere se o arquivo pertence a esta OS antes de entregá-lo.
+   */
+  baixarArquivo(idOs: number, url: string): Promise<Blob> {
+    return this.baixarBlob(
+      `/api/chamados/${idOs}/arquivos/conteudo?url=${encodeURIComponent(url)}`,
+      'Não foi possível carregar a foto.'
+    );
   }
 
   /** Pausa pelo administrador (RN-30). `descricao` obrigatória quando motivo = "Outro" (validado também no servidor). */

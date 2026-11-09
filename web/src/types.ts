@@ -117,7 +117,7 @@ export interface ServicoEquipamento {
   sub_defeitos_iluminacao?: string[];
   sub_defeitos_estrutura?: string[];
   materiais_utilizados?: MaterialUtilizado[];
-  /** URLs devolvidas pela API (hoje relativas a /static; pendência: URL assinada, SEG-09). */
+  /** Referências devolvidas pela API (`/static/uploads/...`): identificadores, NÃO endereços públicos. Exiba com <FotoSegura>. */
   fotos_defeito?: string[];
   fotos_conserto?: string[];
 }

@@ -15,6 +15,19 @@ export const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
+  subtitle: {
+    fontSize: 14,
+    color: colors.gray[500],
+    marginTop: -8,
+    marginBottom: 12,
+  },
+
+  erroBanner: {
+    fontSize: 13,
+    color: colors.red[900],
+    marginBottom: 8,
+  },
+
   loader: {
     flex: 1,
     justifyContent: "center",

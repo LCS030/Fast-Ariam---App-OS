@@ -1,54 +1,44 @@
-// src/utils/storage.ts
+// Armazenamento do token de sessão (SEG-13).
+// O JWT fica no armazenamento seguro do Android (Keystore, via expo-secure-store),
+// nunca em AsyncStorage (texto puro).
+import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export async function storageSet(key: string, value: any): Promise<void> {
+const TOKEN_KEY = "fast_ariam_token";
+const LEGACY_TOKEN_KEY = "token"; // chave usada antes da migração para SecureStore
+
+/** Remove o token antigo gravado em AsyncStorage (texto puro), se existir. */
+async function limparTokenLegado(): Promise<void> {
   try {
-    await AsyncStorage.setItem(key, JSON.stringify(value));
-  } catch (err) {
-    console.log("❌ STORAGE SET ERROR:", err);
+    await AsyncStorage.removeItem(LEGACY_TOKEN_KEY);
+  } catch {
+    // melhor esforço: a limpeza do legado não pode impedir o login
   }
 }
 
-export async function storageGet(key: string): Promise<any | null> {
-  try {
-    const json = await AsyncStorage.getItem(key);
-    return json ? JSON.parse(json) : null;
-  } catch (err) {
-    console.log("❌ STORAGE GET ERROR:", err);
-    return null;
-  }
-}
-
-export async function storageRemove(key: string): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(key);
-  } catch (err) {
-    console.log("❌ STORAGE REMOVE ERROR:", err);
-  }
-}
-
-export async function setToken(token: string, access_token?: any): Promise<void> {
-  // keep signature flexible, but store raw token
-  try {
-    await AsyncStorage.setItem("token", token);
-  } catch (err) {
-    console.log("❌ SET TOKEN ERROR:", err);
-  }
+export async function setToken(token: string): Promise<void> {
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  await limparTokenLegado();
 }
 
 export async function getToken(): Promise<string | null> {
   try {
-    return await AsyncStorage.getItem("token");
-  } catch (err) {
-    console.log("❌ GET TOKEN ERROR:", err);
+    return await SecureStore.getItemAsync(TOKEN_KEY);
+  } catch {
     return null;
   }
 }
 
+/**
+ * Apaga somente o token. Dados pendentes de envio (fila offline, fotos, assinatura)
+ * NUNCA devem ser removidos aqui (RN-39): ao perder a sessão o técnico só precisa
+ * autenticar de novo.
+ */
 export async function removeToken(): Promise<void> {
   try {
-    await AsyncStorage.removeItem("token");
-  } catch (err) {
-    console.log("❌ REMOVE TOKEN ERROR:", err);
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch {
+    // sem token armazenado ou keystore indisponível: nada a remover
   }
+  await limparTokenLegado();
 }

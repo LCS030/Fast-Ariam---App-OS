@@ -1,5 +1,5 @@
-// src/app/detalheChamado/RegistroDefeito.tsx
-import React, { useEffect, useState, useCallback } from "react";
+// src/app/detalheChamado/registroEquipamento.tsx
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -12,93 +12,58 @@ import {
   FlatList,
   Pressable,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Header } from "@/components/header/indexHeader";
-import { listarServicos, criarServico, atualizarServico } from "@/api/servico";
 import { Button } from "@/components/button/indexButton";
+import { colors } from "@/styles/Colors";
+import type { ServicoPatch } from "@/api/servico";
+import type { ServicoEquipamento } from "@/api/chamado";
+import { alertError, getErrorMessage } from "@/utils/alerts";
+import { obterOsLocal } from "@/offline/cacheOS";
+import { salvarConserto, salvarRegistroServico } from "@/offline/acoes";
+import { voltarParaOS } from "@/utils/nav";
+import { paramNum } from "@/utils/params";
+import { parseValor } from "@/utils/validators";
+import {
+  Option,
+  OPTIONS_COMPRESSOR,
+  OPTIONS_VAZAMENTO,
+  OPTIONS_OUTROS,
+  OPTIONS_ILUMINACAO,
+  OPTIONS_ESTRUTURA,
+  CHAVE_NAO_LOCALIZADO,
+  valoresDeChaves,
+  chavesDeValores,
+  comporPontoDescricao,
+  separarPontoDescricao,
+} from "@/utils/defeitos";
 
 import Pontos_solda from "../../../assets/images/pontos_solda.png";
 import Pontos_estrutura from "../../../assets/images/pontos_estrutura.png";
 
-// =====================================================
-// TIPOS
-// =====================================================
-type Option = { key: string; label: string };
+type CategoriaKey = "compressor" | "vazamento" | "outros" | "iluminacao" | "estrutura";
 
-// =====================================================
-// OPTIONS (ARRAYS PARA O MODAL)
-// =====================================================
+const OPTIONS_POR_CATEGORIA: Record<CategoriaKey, Option[]> = {
+  compressor: OPTIONS_COMPRESSOR,
+  vazamento: OPTIONS_VAZAMENTO,
+  outros: OPTIONS_OUTROS,
+  iluminacao: OPTIONS_ILUMINACAO,
+  estrutura: OPTIONS_ESTRUTURA,
+};
 
-const OPTIONS_COMPRESSOR: Option[] = [
-  { key: "queimado", label: "Queimado" },
-  { key: "em_massa", label: "Em Massa" },
-  { key: "em_curto", label: "Em Curto" },
-  { key: "corrente_alta", label: "Corrente Alta" },
-  { key: "nao_parte", label: "Não Parte" },
-  { key: "sem_compressao", label: "Sem Compressão" },
-  { key: "travado", label: "Travado" },
-  { key: "com_barulho", label: "Com Barulho" },
-  { key: "nao_succiona", label: "Não Succiona" },
-  { key: "desarmando", label: "Desarmado" },
-];
+const TITULO_CATEGORIA: Record<CategoriaKey, string> = {
+  compressor: "Compressor",
+  vazamento: "Vazamento",
+  outros: "Outros (refrigeração)",
+  iluminacao: "Iluminação",
+  estrutura: "Estrutura",
+};
 
-const MAP_COMPRESSOR: Record<string, string> = OPTIONS_COMPRESSOR.reduce(
-  (acc, item) => ({ ...acc, [item.key]: item.label }),
-  {}
-);
-
-const OPTIONS_VAZAMENTO: Option[] = [
-  { key: "1", label: "1 - Solda - Prata 30% (Aço / Aço)" },
-  { key: "2", label: "2 - Solda - Prata 30% (Cobre / Aço)" },
-  { key: "3", label: "3 - Tampão Lokring (Cobre)" },
-  { key: "4", label: "4 - Solda - Prata 30% (Aço / Cobre)" },
-  { key: "5", label: "5 - União Lokring (Cobre / Alumínio)" },
-  { key: "6", label: "6 - União Lokring (Alumínio / Cobre)" },
-  { key: "7", label: "7 - Solda - Silfoscoper 15% (Cobre / Cobre)" },
-  { key: "8", label: "8 - Solda - Silfoscoper 15% (Cobre / Cobre)" },
-  { key: "9", label: "9 - Solda - Silfoscoper 15% (Cobre / Cobre)" },
-  { key: "10", label: "10 - Solda - Prata 30% (Cobre / Aço)" },
-  { key: "11", label: "11 - Solda - Prata 30% (Cobre / Aço)" },
-  { key: "12", label: "12 - Solda - Silfoscoper 15% (Cobre / Cobre)" },
-  { key: "13", label: "13 - Solda - Silfoscoper 15% (Cobre / Cobre)" },
-  { key: "14", label: "14 - Solda - Prata 30% (Cobre / Aço)" },
-  { key: "15", label: "15 - Solda - Prata 30% (Cobre / Aço)" },
-  { key: "16", label: "16 - Solda - Silfoscoper 15% (Cobre / Cobre)" },
-  { key: "17", label: "17 - Solda - Silfoscoper 15% (Cobre / Cobre)" },
-  { key: "18", label: "Não localizado" },
-];
-
-const OPTIONS_OUTROS: Option[] = [
-  { key: "filtro_entupido", label: "Filtro Entupido" },
-  { key: "capilar_obstruido", label: "Capilar Obstruído" },
-  { key: "micromotor_queimado", label: "Micromotor Queimado" },
-  { key: "micromotor_travado", label: "Micromotor Travado" },
-  { key: "controlador_queimado", label: "Controlador Queimado" },
-  { key: "regulagem_parametros", label: "Regulagem Parâmetros" },
-];
-
-const OPTIONS_ILUMINACAO: Option[] = [
-  { key: "lampada_queimada", label: "Lâmpada Queimada" },
-  { key: "sem_alimentacao", label: "Sem Alimentação" },
-  { key: "em_curto", label: "Em Curto" },
-];
-
-const OPTIONS_ESTRUTURA: Option[] = [
-  { key: "1", label: "1 - Perfil Curvo Vidro" },
-  { key: "2", label: "2 - Perfil Suporte Iluminação" },
-  { key: "3", label: "3 - Lente Calha Iluminação" },
-  { key: "4", label: "4 - Perfil Vedação" },
-  { key: "5", label: "5 - Perfil Porta Etiqueta" },
-  { key: "6", label: "6 - Puxador" },
-  { key: "7", label: "7 - Porta Parachoque" },
-  { key: "8", label: "8 - Canto 90°" },
-  { key: "9", label: "9 - Acrílico Carel" },
-  { key: "10", label: "10 - Perfil Frontal" },
-  { key: "11", label: "11 - Parachoque Frontal" },
-  { key: "12", label: "12 - Parachoque Lateral" },
-];
+type MaterialForm = { nome: string; quantidade: string; valor: string };
 
 // =====================================================
 // MODAL DE MULTI SELECT
@@ -119,14 +84,8 @@ function MultiSelectModal({
   title?: string;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.4)",
-          justifyContent: "center",
-        }}
-      >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center" }}>
         <View
           style={{
             margin: 20,
@@ -136,9 +95,7 @@ function MultiSelectModal({
             padding: 12,
           }}
         >
-          <Text style={{ fontWeight: "700", fontSize: 16, marginBottom: 8 }}>
-            {title}
-          </Text>
+          <Text style={{ fontWeight: "700", fontSize: 16, marginBottom: 8 }}>{title}</Text>
 
           <FlatList
             data={options}
@@ -149,36 +106,32 @@ function MultiSelectModal({
               return (
                 <Pressable
                   onPress={() => onToggle(item.key)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: isSelected }}
                   style={{
-                    paddingVertical: 10,
+                    minHeight: 48,
                     flexDirection: "row",
                     alignItems: "center",
                   }}
                 >
                   <View
                     style={{
-                      width: 20,
-                      height: 20,
+                      width: 24,
+                      height: 24,
                       borderRadius: 4,
                       borderWidth: 1,
-                      borderColor: "#666",
+                      borderColor: colors.gray[500],
                       justifyContent: "center",
                       alignItems: "center",
                       marginRight: 10,
                     }}
                   >
                     {isSelected && (
-                      <View
-                        style={{
-                          width: 12,
-                          height: 12,
-                          backgroundColor: "#333",
-                        }}
-                      />
+                      <View style={{ width: 14, height: 14, backgroundColor: colors.blue[900] }} />
                     )}
                   </View>
 
-                  <Text>{item.label}</Text>
+                  <Text style={{ flex: 1 }}>{item.label}</Text>
                 </Pressable>
               );
             }}
@@ -197,75 +150,91 @@ function MultiSelectModal({
 // TELA PRINCIPAL
 // =====================================================
 export default function RegistroEquipamentoScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{
+    chamadoId?: string;
+    visitaId?: string;
+    servicoId?: string;
+  }>();
   const router = useRouter();
 
-  const chamadoId = Number(params.chamadoId);
-  const visitaId = Number(params.visitaId);
-  const servicoId = params.servicoId ? Number(params.servicoId) : undefined;
-  const numeroSerie = String(params.numeroSerie ?? "");
+  const chamadoId = paramNum(params.chamadoId);
+  const visitaId = paramNum(params.visitaId);
+  const servicoIdParam = paramNum(params.servicoId);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(servicoIdParam !== null);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
+  const [saving, setSaving] = useState<null | "salvar" | "conserto">(null);
+  const savingRef = useRef(false); // trava sincrona contra duplo toque
 
-  const [servico, setServico] = useState<any | null>(null);
+  // Registro de servico do equipamento da OS (criado pelo servidor). Modelo e serie: somente leitura.
+  const [servico, setServico] = useState<ServicoEquipamento | null>(null);
+  const [erros, setErros] = useState<{ defeitos?: string; materiais?: string }>({});
 
-  // States dos seletores
-  const [compressorSel, setCompressorSel] = useState<string[]>([]);
-  const [vazamentoSel, setVazamentoSel] = useState<string[]>([]);
-  const [outrosSel, setOutrosSel] = useState<string[]>([]);
-  const [iluminacaoSel, setIluminacaoSel] = useState<string[]>([]);
-  const [estruturaSel, setEstruturaSel] = useState<string[]>([]);
+  const [selecionados, setSelecionados] = useState<Record<CategoriaKey, string[]>>({
+    compressor: [],
+    vazamento: [],
+    outros: [],
+    iluminacao: [],
+    estrutura: [],
+  });
 
   const [defeitoOutrosDesc, setDefeitoOutrosDesc] = useState("");
-  const [vazamentoPontoDesc, setVazamentoPontoDesc] = useState("");
-
-  const [materiais, setMateriais] = useState<
-    { nome: string; quantidade: number; valor: number }[]
-  >([]);
-
-  const [modalOpen, setModalOpen] = useState<{
-    key: string | null;
-    open: boolean;
-  }>({ key: null, open: false });
+  const [vazamentoObservacao, setVazamentoObservacao] = useState("");
+  const [materiais, setMateriais] = useState<MaterialForm[]>([]);
+  const [categoriaAberta, setCategoriaAberta] = useState<CategoriaKey | null>(null);
 
   // =====================================================
-  // CARREGAR SERVIÇO EXISTENTE
+  // CARREGAR O SERVIÇO DO EQUIPAMENTO
   // =====================================================
   const loadExisting = useCallback(async () => {
+    if (chamadoId === null || visitaId === null || servicoIdParam === null) return;
     try {
       setLoading(true);
+      setErroCarga(null);
 
-      const lista = await listarServicos(chamadoId, visitaId);
-      let s = null;
-
-      if (servicoId)
-        s = lista.find((x: any) => x.id_servico === servicoId);
-      else if (numeroSerie)
-        s = lista.find(
-          (x: any) => x.numero_serie_atendido === numeroSerie
-        );
-
-      if (s) {
-        setServico(s);
-        setCompressorSel(s.sub_defeitos_compressor || []);
-        setVazamentoSel(s.sub_defeitos_vazamento || []);
-        setOutrosSel(s.sub_defeitos_outros || []);
-        setIluminacaoSel(s.sub_defeitos_iluminacao || []);
-        setEstruturaSel(s.sub_defeitos_estrutura || []);
-        setDefeitoOutrosDesc(s.defeito_outros_descricao || "");
-        setVazamentoPontoDesc(s.vazamento_ponto_descricao || "");
-        setMateriais(s.materiais_utilizados || []);
-      } else {
-        setServico(null);
+      // Servicos do aparelho: cache do servidor + registros ainda nao enviados (ultimo salvo vence).
+      const os = await obterOsLocal(chamadoId);
+      if (!os || !os.visita || os.visita.id_visita !== visitaId) {
+        setErroCarga("Visita não encontrada no aparelho. Conecte-se e sincronize.");
+        return;
       }
+      const s = os.servicos.find((x) => x.id_servico === servicoIdParam);
+
+      if (!s) {
+        setErroCarga("Equipamento não encontrado nesta visita. Volte e abra a OS novamente.");
+        return;
+      }
+
+      const ponto = separarPontoDescricao(s.vazamento_ponto_descricao);
+      const vazamentoChaves = chavesDeValores(
+        OPTIONS_VAZAMENTO,
+        s.sub_defeitos_vazamento
+      ).filter((k) => !/^\d+$/.test(k));
+
+      setServico(s);
+      setSelecionados({
+        compressor: chavesDeValores(OPTIONS_COMPRESSOR, s.sub_defeitos_compressor),
+        // pontos numerados voltam do texto; "Nao localizado" volta do enum
+        vazamento: [...ponto.chaves, ...vazamentoChaves],
+        outros: chavesDeValores(OPTIONS_OUTROS, s.sub_defeitos_outros),
+        iluminacao: chavesDeValores(OPTIONS_ILUMINACAO, s.sub_defeitos_iluminacao),
+        estrutura: chavesDeValores(OPTIONS_ESTRUTURA, s.sub_defeitos_estrutura),
+      });
+      setDefeitoOutrosDesc(s.defeito_outros_descricao ?? "");
+      setVazamentoObservacao(ponto.observacao);
+      setMateriais(
+        (s.materiais_utilizados ?? []).map((m) => ({
+          nome: m.nome,
+          quantidade: String(m.quantidade),
+          valor: String(m.valor).replace(".", ","),
+        }))
+      );
     } catch (e) {
-      console.log("Erro carregar servicos", e);
-      Alert.alert("Erro", "Falha ao carregar serviço.");
+      setErroCarga(getErrorMessage(e, "Falha ao carregar o equipamento."));
     } finally {
       setLoading(false);
     }
-  }, [chamadoId, visitaId, servicoId, numeroSerie]);
+  }, [chamadoId, visitaId, servicoIdParam]);
 
   useEffect(() => {
     loadExisting();
@@ -274,207 +243,255 @@ export default function RegistroEquipamentoScreen() {
   // =====================================================
   // ALTERAR SELEÇÃO DOS MULTISELECTS
   // =====================================================
-  function toggleSel(setter: (v: string[]) => void, arr: string[], key: string) {
-    const copy = [...arr];
-    const index = copy.indexOf(key);
-    index >= 0 ? copy.splice(index, 1) : copy.push(key);
-    setter(copy);
+  function toggle(categoria: CategoriaKey, key: string) {
+    setSelecionados((prev) => {
+      const atual = prev[categoria];
+      let proxima = atual.includes(key) ? atual.filter((k) => k !== key) : [...atual, key];
+      // "Nao localizado" exclui os pontos numerados e vice-versa
+      if (categoria === "vazamento" && !atual.includes(key)) {
+        proxima =
+          key === CHAVE_NAO_LOCALIZADO
+            ? [CHAVE_NAO_LOCALIZADO]
+            : proxima.filter((k) => k !== CHAVE_NAO_LOCALIZADO);
+      }
+      return { ...prev, [categoria]: proxima };
+    });
+  }
+
+  function resumo(categoria: CategoriaKey): string {
+    const opcoes = OPTIONS_POR_CATEGORIA[categoria];
+    const rotulos = selecionados[categoria]
+      .map((k) => opcoes.find((o) => o.key === k)?.label)
+      .filter(Boolean) as string[];
+    if (rotulos.length === 0) return "Nenhum";
+    if (categoria === "vazamento" || categoria === "estrutura") {
+      return rotulos.map((r) => r.split(" - ")[0]).join(", ");
+    }
+    return rotulos.join(", ");
   }
 
   // =====================================================
-  // ADICIONAR / REMOVER MATERIAIS
+  // MATERIAIS
   // =====================================================
   function addMaterial() {
-    setMateriais((m) => [...m, { nome: "", quantidade: 1, valor: 0 }]);
+    setMateriais((m) => [...m, { nome: "", quantidade: "1", valor: "" }]);
   }
 
   function removeMaterial(i: number) {
     setMateriais((m) => m.filter((_, idx) => idx !== i));
   }
 
+  function editarMaterial(i: number, campo: keyof MaterialForm, texto: string) {
+    setMateriais((prev) => prev.map((x, idx) => (idx === i ? { ...x, [campo]: texto } : x)));
+    setErros((e) => ({ ...e, materiais: undefined }));
+  }
+
   // =====================================================
-  // SALVAR SERVIÇO
+  // SALVAR (PATCH) E SALVAR CONSERTO (PATCH + POST salvar-conserto)
   // =====================================================
-  async function handleSalvar() {
+  function montarPayload(): { payload: ServicoPatch; ok: boolean } {
+    const novosErros: typeof erros = {};
+
+    const materiaisPayload: { nome: string; quantidade: number; valor: number }[] = [];
+    for (const m of materiais) {
+      const quantidade = /^\d+$/.test(m.quantidade.trim()) ? Number(m.quantidade.trim()) : 0;
+      const valor = parseValor(m.valor);
+      if (!m.nome.trim() || quantidade < 1 || valor === null) {
+        novosErros.materiais =
+          "Cada material precisa de nome, quantidade (inteiro, mínimo 1) e valor válido (ex.: 12,50).";
+        break;
+      }
+      materiaisPayload.push({ nome: m.nome.trim(), quantidade, valor });
+    }
+
+    const compressor = valoresDeChaves(OPTIONS_COMPRESSOR, selecionados.compressor);
+    const vazamento = valoresDeChaves(OPTIONS_VAZAMENTO, selecionados.vazamento);
+    const outros = valoresDeChaves(OPTIONS_OUTROS, selecionados.outros);
+    const iluminacao = valoresDeChaves(OPTIONS_ILUMINACAO, selecionados.iluminacao);
+    const estrutura = valoresDeChaves(OPTIONS_ESTRUTURA, selecionados.estrutura);
+
+    const refrigeracao: string[] = [];
+    if (compressor.length) refrigeracao.push("Compressor");
+    if (vazamento.length) refrigeracao.push("Vazamento");
+    if (outros.length) refrigeracao.push("Outros (Refrigeração)");
+
+    const principais: string[] = [];
+    if (refrigeracao.length) principais.push("Refrigeração");
+    if (iluminacao.length) principais.push("Iluminação");
+    if (estrutura.length) principais.push("Estrutura");
+    if (defeitoOutrosDesc.trim()) principais.push("Outros");
+
+    // Somente defeitos, descricoes e materiais: modelo/serie/nome nao sao enviados (422 no servidor).
+    const payload: ServicoPatch = {
+      defeitos_principais: principais,
+      sub_defeitos_refrigeracao: refrigeracao,
+      sub_defeitos_compressor: compressor,
+      sub_defeitos_vazamento: vazamento,
+      sub_defeitos_outros: outros,
+      sub_defeitos_iluminacao: iluminacao,
+      sub_defeitos_estrutura: estrutura,
+      defeito_outros_descricao: defeitoOutrosDesc.trim() || null,
+      vazamento_ponto_descricao: comporPontoDescricao(selecionados.vazamento, vazamentoObservacao),
+      materiais_utilizados: materiaisPayload,
+    };
+
+    setErros(novosErros);
+    return { payload, ok: Object.keys(novosErros).length === 0 };
+  }
+
+  async function executarSalvar(conserto: boolean) {
+    if (savingRef.current || chamadoId === null || visitaId === null || !servico) return;
+
+    const montado = montarPayload();
+    if (!montado.ok) return;
+
+    // "Salvar conserto" exige ao menos um defeito principal (o servidor valida de novo: 422).
+    if (conserto && montado.payload.defeitos_principais.length === 0) {
+      setErros((e) => ({
+        ...e,
+        defeitos: "Informe ao menos um defeito principal para salvar o conserto.",
+      }));
+      return;
+    }
+    setErros((e) => ({ ...e, defeitos: undefined }));
+
+    savingRef.current = true;
     try {
-      setSaving(true)
-
-      const payload = {
-        numero_serie_atendido:
-          numeroSerie || servico?.numero_serie_atendido || null,
-        
-        nome_equipamento: servico?.nome_equipamento || "Equipamento",
-
-        defeitos_principais: [],
-
-        sub_defeitos_compressor: compressorSel.map(
-          (k) => MAP_COMPRESSOR[k]
-        ),
-
-        sub_defeitos_vazamento: vazamentoSel,
-        sub_defeitos_outros: outrosSel,
-        sub_defeitos_iluminacao: iluminacaoSel,
-        sub_defeitos_estrutura: estruturaSel,
-
-        defeito_outros_descricao: defeitoOutrosDesc || null,
-        vazamento_ponto_descricao: vazamentoPontoDesc || null,
-
-        materiais_utilizados: materiais.map((m) => ({
-          nome: m.nome,
-          quantidade: Number(m.quantidade),
-          valor: Number(m.valor),
-        })),
-      };
-
-      console.log("PAYLOAD ENVIADO:", payload);
-
-      if (servico?.id_servico) {
-        const updated = await atualizarServico(
-          chamadoId,
-          visitaId,
-          servico.id_servico,
-          payload
-        );
-        setServico(updated);
-        Alert.alert("Sucesso", "Serviço atualizado.");
+      setSaving(conserto ? "conserto" : "salvar");
+      // Grava no aparelho (servico_salvo e, no conserto, conserto_salvo) e envia depois.
+      const ctx = { idOs: chamadoId, idVisita: visitaId };
+      if (conserto) {
+        await salvarConserto(ctx, servico.id_servico, montado.payload);
+        setServico((atual) => ({ ...(atual ?? servico), conserto_salvo_em: new Date().toISOString() }));
       } else {
-        const created = await criarServico(chamadoId, visitaId, payload);
-        setServico(created);
-        Alert.alert("Sucesso", "Serviço criado.");
+        await salvarRegistroServico(ctx, servico.id_servico, montado.payload);
       }
 
-      await loadExisting();
-    } catch (err: any) {
-
-  const detail = err?.response?.data?.detail;
-
-  const msg =
-    Array.isArray(detail)
-      ? detail.map((d: any) => d.msg || JSON.stringify(d)).join("\n")
-      : typeof detail === "string"
-      ? detail
-      : JSON.stringify(detail, null, 2);
-
-  Alert.alert("Erro", msg || "Erro desconhecido");
-}
-finally {
-      setSaving(false);
+      Alert.alert(
+        conserto ? "Conserto salvo" : "Alterações salvas",
+        "Salvo no aparelho; será enviado quando houver conexão."
+      );
+      if (conserto) voltarParaOS(router, chamadoId);
+    } catch (err) {
+      // Todos os campos permanecem preenchidos para nova tentativa.
+      alertError(err, conserto ? "Falha ao salvar o conserto." : "Falha ao salvar o registro.");
+    } finally {
+      savingRef.current = false;
+      setSaving(null);
     }
   }
 
   // =====================================================
-  // TELA LOADING
+  // ESTADOS DE TELA
   // =====================================================
-  if (loading) {
+  if (chamadoId === null || visitaId === null || servicoIdParam === null) {
     return (
       <View style={{ flex: 1 }}>
         <Header leftIconName="arrow-back" onLeftIconPress={() => router.back()} />
-        <View
-          style={{
-            flex: 1,
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <ActivityIndicator size="large" />
+        <View style={{ flex: 1, justifyContent: "center", padding: 24 }}>
+          <Text style={{ color: colors.red[900], textAlign: "center" }}>
+            OS, visita ou equipamento não identificados. Volte e tente novamente.
+          </Text>
         </View>
       </View>
     );
   }
 
+  if (loading || erroCarga) {
+    return (
+      <View style={{ flex: 1 }}>
+        <Header leftIconName="arrow-back" onLeftIconPress={() => router.back()} />
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 16 }}>
+          {loading ? (
+            <ActivityIndicator size="large" />
+          ) : (
+            <>
+              <Text style={{ color: colors.red[900], textAlign: "center" }}>{erroCarga}</Text>
+              <Button title="Tentar novamente" onPress={loadExisting} />
+            </>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  const modeloExibido = servico?.modelo || servico?.nome_equipamento || "Modelo não informado";
+  const serieExibida = servico?.numero_serie || servico?.numero_serie_atendido || "S/N";
+  const ocupado = saving !== null;
+
+  const cabecalho = (texto: string) => (
+    <Text
+      style={{
+        color: "#fff",
+        fontSize: 15,
+        padding: 6,
+        backgroundColor: colors.blue[900],
+      }}
+    >
+      {texto}
+    </Text>
+  );
+
+  const linha = (categoria: CategoriaKey) => (
+    <SectionRow
+      label={TITULO_CATEGORIA[categoria]}
+      value={resumo(categoria)}
+      onPress={() => setCategoriaAberta(categoria)}
+    />
+  );
+
   // =====================================================
   // RENDER
   // =====================================================
   return (
-    <View style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1, backgroundColor: "#fff" }}
+    >
       <Header leftIconName="arrow-back" onLeftIconPress={() => router.back()} />
 
-      <ScrollView style={{ padding: 12 }}>
-        <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 8 }}>
-          Nome do equipamento
-        </Text>
-        <Text style={{ marginBottom: 6 }}>
-          Número de série:{" "}
-          {numeroSerie || servico?.numero_serie_atendido || "—"}
+      <ScrollView style={{ padding: 12 }} keyboardShouldPersistTaps="handled">
+        <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12, color: colors.blue[900] }}>
+          Registro do atendimento
         </Text>
 
-        {/* ===================================================== */}
-        {/* SEÇÕES DE DEFEITOS */}
-        {/* ===================================================== */}
-
-        <Text
+        {/* Equipamento da OS: somente leitura (definido pelo escritório). */}
+        <View
           style={{
-            paddingTop: 20,
-            paddingBottom: 10,
-            fontSize: 18,
-            fontWeight: "700",
+            padding: 12,
+            marginBottom: 8,
+            backgroundColor: colors.gray[100],
+            borderRadius: 8,
+            borderLeftWidth: 4,
+            borderLeftColor: colors.blue[900],
           }}
         >
+          <Text style={{ color: colors.blue[900], fontSize: 16, fontWeight: "700", marginBottom: 4 }}>
+            {modeloExibido}
+          </Text>
+          <Text style={{ color: colors.gray[800], fontSize: 14 }}>Número de série: {serieExibida}</Text>
+          <Text style={{ color: colors.gray[800], fontSize: 14, marginTop: 4 }}>
+            Conserto: {servico?.conserto_salvo_em ? "salvo" : "ainda não salvo"}
+          </Text>
+        </View>
+
+        <Text style={{ paddingTop: 12, paddingBottom: 10, fontSize: 18, fontWeight: "700" }}>
           Defeitos
         </Text>
+        {erros.defeitos ? (
+          <Text style={{ color: colors.red[900], fontSize: 13, marginBottom: 8 }}>{erros.defeitos}</Text>
+        ) : null}
 
-        <Text
-          style={{
-            color: "#fff",
-            fontSize: 15,
-            padding: 5,
-            backgroundColor: "#194869",
-          }}
-        >
-          Refrigeração
-        </Text>
+        {cabecalho("Refrigeração")}
+        {linha("compressor")}
+        {linha("vazamento")}
+        {linha("outros")}
 
-        <SectionRow
-          label="Compressor"
-          value={compressorSel.join(", ") || "Nenhum"}
-          onPress={() => setModalOpen({ key: "compressor", open: true })}
-        />
+        {cabecalho("Iluminação")}
+        {linha("iluminacao")}
 
-        <SectionRow
-          label="Vazamento"
-          value={vazamentoSel.join(", ") || "Nenhum"}
-          onPress={() => setModalOpen({ key: "vazamento", open: true })}
-        />
-
-        <SectionRow
-          label="Outros"
-          value={outrosSel.join(", ") || "Nenhum"}
-          onPress={() => setModalOpen({ key: "outros", open: true })}
-        />
-
-        <Text
-          style={{
-            color: "#fff",
-            fontSize: 15,
-            padding: 5,
-            backgroundColor: "#194869",
-          }}
-        >
-          Iluminação
-        </Text>
-
-        <SectionRow
-          label="Iluminação"
-          value={iluminacaoSel.join(", ") || "Nenhum"}
-          onPress={() => setModalOpen({ key: "iluminacao", open: true })}
-        />
-
-        <Text
-          style={{
-            color: "#fff",
-            fontSize: 15,
-            padding: 5,
-            backgroundColor: "#194869",
-          }}
-        >
-          Estrutura
-        </Text>
-
-        <SectionRow
-          label="Estrutura"
-          value={estruturaSel.join(", ") || "Nenhum"}
-          onPress={() => setModalOpen({ key: "estrutura", open: true })}
-        />
+        {cabecalho("Estrutura")}
+        {linha("estrutura")}
 
         {/* ===================================================== */}
         {/* CAMPOS DE TEXTO */}
@@ -490,30 +507,30 @@ finally {
             style={{
               minHeight: 80,
               borderWidth: 1,
-              borderColor: "#ddd",
+              borderColor: colors.gray[200],
               padding: 8,
               marginTop: 8,
               borderRadius: 6,
+              textAlignVertical: "top",
             }}
           />
         </View>
 
         <View style={{ marginTop: 12 }}>
-          <Text style={{ fontWeight: "700" }}>
-            Descrição do ponto do vazamento
-          </Text>
+          <Text style={{ fontWeight: "700" }}>Observação do ponto do vazamento</Text>
           <TextInput
             placeholder="Local do vazamento..."
-            value={vazamentoPontoDesc}
-            onChangeText={setVazamentoPontoDesc}
+            value={vazamentoObservacao}
+            onChangeText={setVazamentoObservacao}
             multiline
             style={{
               minHeight: 60,
               borderWidth: 1,
-              borderColor: "#ddd",
+              borderColor: colors.gray[200],
               padding: 8,
               marginTop: 8,
               borderRadius: 6,
+              textAlignVertical: "top",
             }}
           />
         </View>
@@ -523,9 +540,7 @@ finally {
         {/* ===================================================== */}
 
         <View style={{ marginTop: 20 }}>
-          <Text style={{ fontSize: 18, fontWeight: "700" }}>
-            Materiais Utilizados
-          </Text>
+          <Text style={{ fontSize: 18, fontWeight: "700" }}>Materiais Utilizados</Text>
 
           {materiais.map((m, idx) => (
             <View
@@ -533,7 +548,7 @@ finally {
               style={{
                 marginTop: 8,
                 borderWidth: 1,
-                borderColor: "#eee",
+                borderColor: colors.gray[200],
                 padding: 8,
                 borderRadius: 6,
               }}
@@ -541,101 +556,92 @@ finally {
               <TextInput
                 placeholder="Nome do material"
                 value={m.nome}
-                onChangeText={(t) =>
-                  setMateriais((prev) =>
-                    prev.map((x, i) =>
-                      i === idx ? { ...x, nome: t } : x
-                    )
-                  )
-                }
+                onChangeText={(t) => editarMaterial(idx, "nome", t)}
+                style={{ minHeight: 44 }}
               />
 
-              <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-                <Text>Quantidade:</Text>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 8, alignItems: "center" }}>
+                <Text>Qtd:</Text>
                 <TextInput
-                  placeholder="Qtd"
+                  placeholder="1"
                   keyboardType="numeric"
-                  value={String(m.quantidade)}
-                  onChangeText={(t) =>
-                    setMateriais((prev) =>
-                      prev.map((x, i) =>
-                        i === idx
-                          ? { ...x, quantidade: Number(t || 0) }
-                          : x
-                      )
-                    )
-                  }
-                  style={{ flex: 1 }}
+                  value={m.quantidade}
+                  onChangeText={(t) => editarMaterial(idx, "quantidade", t.replace(/\D/g, ""))}
+                  style={{
+                    flex: 1,
+                    minHeight: 44,
+                    borderBottomWidth: 1,
+                    borderColor: colors.gray[200],
+                  }}
                 />
-                <Text>Valor:</Text>
+                <Text>Valor (R$):</Text>
                 <TextInput
-                  placeholder="Valor"
-                  keyboardType="numeric"
-                  value={String(m.valor)}
-                  onChangeText={(t) =>
-                    setMateriais((prev) =>
-                      prev.map((x, i) =>
-                        i === idx ? { ...x, valor: Number(t || 0) } : x
-                      )
-                    )
-                  }
-                  style={{ flex: 1 }}
+                  placeholder="0,00"
+                  keyboardType="decimal-pad"
+                  value={m.valor}
+                  onChangeText={(t) => editarMaterial(idx, "valor", t.replace(/[^0-9.,]/g, ""))}
+                  style={{
+                    flex: 1,
+                    minHeight: 44,
+                    borderBottomWidth: 1,
+                    borderColor: colors.gray[200],
+                  }}
                 />
               </View>
 
               <View style={{ marginTop: 8, alignItems: "flex-end" }}>
-                <Button title="Remover" onPress={() => removeMaterial(idx)} />
+                <Button title="Remover" variant="secondary" onPress={() => removeMaterial(idx)} />
               </View>
             </View>
           ))}
 
+          {erros.materiais ? (
+            <Text style={{ color: colors.red[900], fontSize: 13, marginTop: 8 }}>{erros.materiais}</Text>
+          ) : null}
+
           <View style={{ marginTop: 8 }}>
-            <Button title="Adicionar material" onPress={addMaterial} />
+            <Button title="Adicionar material" variant="secondary" onPress={addMaterial} />
           </View>
         </View>
 
         {/* ===================================================== */}
-        {/* IMAGENS */}
+        {/* IMAGENS DE REFERENCIA */}
         {/* ===================================================== */}
 
         <View style={{ marginTop: 20 }}>
-          <Text style={{ fontSize: 18, fontWeight: "700" }}>
-            Pontos de solda
-          </Text>
+          <Text style={{ fontSize: 18, fontWeight: "700" }}>Pontos de solda</Text>
           <Image
             source={Pontos_solda}
             resizeMode="contain"
-            style={{
-              width: "100%",
-              height: undefined,
-              aspectRatio: 2,
-              marginVertical: 10,
-            }}
+            style={{ width: "100%", height: undefined, aspectRatio: 2, marginVertical: 10 }}
           />
 
-          <Text style={{ fontSize: 18, fontWeight: "700" }}>
-            Pontos da estrutura
-          </Text>
+          <Text style={{ fontSize: 18, fontWeight: "700" }}>Pontos da estrutura</Text>
           <Image
             source={Pontos_estrutura}
             resizeMode="contain"
-            style={{
-              width: "100%",
-              height: undefined,
-              aspectRatio: 2,
-              marginVertical: 20,
-            }}
+            style={{ width: "100%", height: undefined, aspectRatio: 2, marginVertical: 20 }}
           />
         </View>
 
         {/* ===================================================== */}
         {/* BOTÃO SALVAR */}
         {/* ===================================================== */}
-        <View style={{ marginTop: 20, marginBottom: 40 }}>
+        <View style={{ marginTop: 20, marginBottom: 40, gap: 12 }}>
           <Button
-            title={saving ? "Salvando..." : "Salvar"}
-            onPress={handleSalvar}
-            disabled={saving}
+            title="Salvar alterações"
+            variant="secondary"
+            onPress={() => executarSalvar(false)}
+            loading={saving === "salvar"}
+            disabled={ocupado}
+            width="100%"
+          />
+          <Button
+            title="Salvar conserto"
+            onPress={() => executarSalvar(true)}
+            loading={saving === "conserto"}
+            disabled={ocupado}
+            width="100%"
           />
         </View>
       </ScrollView>
@@ -643,48 +649,17 @@ finally {
       {/* ===================================================== */}
       {/* MODAL DE SELEÇÃO */}
       {/* ===================================================== */}
-      {modalOpen.open && modalOpen.key && (
+      {categoriaAberta && (
         <MultiSelectModal
-          visible={modalOpen.open}
-          options={
-            modalOpen.key === "compressor"
-              ? OPTIONS_COMPRESSOR
-              : modalOpen.key === "vazamento"
-              ? OPTIONS_VAZAMENTO
-              : modalOpen.key === "outros"
-              ? OPTIONS_OUTROS
-              : modalOpen.key === "iluminacao"
-              ? OPTIONS_ILUMINACAO
-              : OPTIONS_ESTRUTURA
-          }
-          selected={
-            modalOpen.key === "compressor"
-              ? compressorSel
-              : modalOpen.key === "vazamento"
-              ? vazamentoSel
-              : modalOpen.key === "outros"
-              ? outrosSel
-              : modalOpen.key === "iluminacao"
-              ? iluminacaoSel
-              : estruturaSel
-          }
-          onToggle={(key) => {
-            if (modalOpen.key === "compressor")
-              toggleSel(setCompressorSel, compressorSel, key);
-            if (modalOpen.key === "vazamento")
-              toggleSel(setVazamentoSel, vazamentoSel, key);
-            if (modalOpen.key === "outros")
-              toggleSel(setOutrosSel, outrosSel, key);
-            if (modalOpen.key === "iluminacao")
-              toggleSel(setIluminacaoSel, iluminacaoSel, key);
-            if (modalOpen.key === "estrutura")
-              toggleSel(setEstruturaSel, estruturaSel, key);
-          }}
-          onClose={() => setModalOpen({ key: null, open: false })}
-          title={`Selecionar ${modalOpen.key}`}
+          visible
+          options={OPTIONS_POR_CATEGORIA[categoriaAberta]}
+          selected={selecionados[categoriaAberta]}
+          onToggle={(key) => toggle(categoriaAberta, key)}
+          onClose={() => setCategoriaAberta(null)}
+          title={`Selecionar: ${TITULO_CATEGORIA[categoriaAberta]}`}
         />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -704,18 +679,17 @@ function SectionRow({
     <TouchableOpacity
       onPress={onPress}
       style={{
+        minHeight: 52,
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderColor: "#eee",
+        borderColor: colors.gray[200],
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
       }}
     >
       <Text style={{ fontWeight: "700" }}>{label}</Text>
-      <Text style={{ color: "#666", maxWidth: "60%", textAlign: "right" }}>
-        {value}
-      </Text>
+      <Text style={{ color: colors.gray[500], maxWidth: "60%", textAlign: "right" }}>{value}</Text>
     </TouchableOpacity>
   );
 }

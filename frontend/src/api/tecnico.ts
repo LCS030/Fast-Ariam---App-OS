@@ -1,4 +1,4 @@
-// src/api/tecnicos.ts
+// src/api/tecnico.ts
 import api from "./api";
 import qs from "qs";
 
@@ -7,9 +7,18 @@ export interface LoginResponse {
   token_type: string;
 }
 
+// Payload de GET /api/auth/me (SDD 6.2, PR-06)
+export interface Perfil {
+  id_tecnico: number;
+  nome: string;
+  email: string;
+  role: "admin" | "tecnico";
+  is_active: boolean;
+}
+
 export async function loginTecnico(email: string, senha: string) {
   const data = qs.stringify({
-    username: email.toLowerCase(),
+    username: email.trim().toLowerCase(),
     password: senha,
   });
 
@@ -20,7 +29,7 @@ export async function loginTecnico(email: string, senha: string) {
   return res.data;
 }
 
-export async function getPerfilTecnico() {
-  const res = await api.get("/auth/me");
+export async function getPerfilTecnico(): Promise<Perfil> {
+  const res = await api.get<Perfil>("/auth/me");
   return res.data;
 }

@@ -1,11 +1,50 @@
 import React from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import { styles } from "@/styles/styleCardEquipamento";
 
-export function CardEquipamento({ equip, disabled = false, onPress }: { equip: any; disabled?: boolean; onPress?: ()=>void }) {
+/** Equipamento da OS (somente leitura). Os flags vem de GET .../estado; ausentes = nao exibidos. */
+export interface EquipamentoItem {
+  modelo: string;
+  numero_serie: string;
+  foto_defeito?: boolean;
+  conserto_salvo?: boolean;
+  foto_conserto?: boolean;
+}
+
+interface Props {
+  equip: EquipamentoItem;
+  /** Sem onPress o card e apenas informativo (sem aparencia de desabilitado). */
+  onPress?: () => void;
+  textoAcao?: string;
+}
+
+const marca = (ok: boolean) => (ok ? "Feito" : "Pendente");
+
+export function CardEquipamento({ equip, onPress, textoAcao }: Props) {
+  const temProgresso = equip.foto_defeito !== undefined;
+
+  const conteudo = (
+    <>
+      <Text style={styles.title}>{equip.modelo || "Modelo não informado"}</Text>
+      <Text style={styles.text}>Número de série: {equip.numero_serie || "S/N"}</Text>
+
+      {temProgresso ? (
+        <View style={styles.progresso}>
+          <Text style={styles.text}>Foto do defeito: {marca(!!equip.foto_defeito)}</Text>
+          <Text style={styles.text}>Conserto salvo: {marca(!!equip.conserto_salvo)}</Text>
+          <Text style={styles.text}>Foto do conserto: {marca(!!equip.foto_conserto)}</Text>
+        </View>
+      ) : null}
+
+      {onPress && textoAcao ? <Text style={styles.acao}>{textoAcao}</Text> : null}
+    </>
+  );
+
+  if (!onPress) return <View style={styles.card}>{conteudo}</View>;
+
   return (
-    <TouchableOpacity disabled={disabled} onPress={onPress} style={{ opacity: disabled ? 0.5 : 1, padding: 10, borderWidth: 1, borderColor: "#ddd", borderRadius: 6 }}>
-      <Text>Refrigerador</Text>
-      <Text>Número de série: {equip.numero_serie_atendido ?? "S/N"}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.card}>
+      {conteudo}
     </TouchableOpacity>
   );
 }

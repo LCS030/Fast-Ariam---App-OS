@@ -5,6 +5,8 @@ import { styles } from "@/styles/styleHeader"
 import { colors } from "@/styles/Colors";
 import { useRouter } from "expo-router";
 
+import { BarraStatus } from "@/components/BarraStatus/indexBarraStatus";
+
 // importe o logo do app:
 import FastLogo from "../../../assets/images/fast_Logo.png";
 
@@ -32,12 +34,16 @@ export function Header({ leftIconName, onLeftIconPress }: HeaderProps) {
     );
 
   return (
-    <View style={styles.container}>
-      {leftIcon}
+    <>
+      <View style={styles.container}>
+        {leftIcon}
 
-      <View style={styles.logoContainer}>
-        <Image source={FastLogo} style={styles.logo} resizeMode="contain" />
+        <View style={styles.logoContainer}>
+          <Image source={FastLogo} style={styles.logo} resizeMode="contain" />
+        </View>
       </View>
-    </View>
+      {/* Indicador global de conexao / pendencias (RF-21). */}
+      <BarraStatus />
+    </>
   );
 }

@@ -12,12 +12,24 @@ export const styles = StyleSheet.create({
     marginBottom: 6,
   },
   input: {
-    height: 46,
+    height: 48,
     borderRadius: 8,
     paddingHorizontal: 12,
     backgroundColor: colors.gray[100],
     borderWidth: 1,
     borderColor: colors.gray[200],
-    fontSize: 15,
+    fontSize: 16,
+    color: colors.gray[950],
+  },
+  inputError: {
+    borderColor: colors.red[500],
+  },
+  inputDisabled: {
+    opacity: 0.6,
+  },
+  error: {
+    marginTop: 4,
+    fontSize: 13,
+    color: colors.red[900],
   },
 });

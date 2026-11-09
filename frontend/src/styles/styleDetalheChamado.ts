@@ -39,6 +39,33 @@ export const styles = StyleSheet.create({
     color: colors.gray[800],
   },
 
+  blocoAcao: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+
+  avisoBox: {
+    marginTop: 8,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: colors.gray[100],
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.blue[900],
+  },
+
+  avisoTitulo: {
+    color: colors.blue[900],
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+
+  avisoTexto: {
+    color: colors.gray[800],
+    fontSize: 14,
+  },
+
   section: {
     marginTop: 14,
     marginBottom: 6,

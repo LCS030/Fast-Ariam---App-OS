@@ -24,8 +24,9 @@ export const styles = StyleSheet.create({
     alignSelf: "flex-end",
     marginTop: 10,
     backgroundColor: colors.red[500],
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 44,
     borderRadius: 8,
   },
   btnClearText: {
@@ -38,8 +39,9 @@ export const styles = StyleSheet.create({
     alignSelf: "flex-end",
     marginTop: 12,
     backgroundColor: colors.action.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 44,
     borderRadius: 8,
   },
   btnSaveText: {
@@ -49,8 +51,3 @@ export const styles = StyleSheet.create({
   },
 
 });
-
-export const webStyle = `
-  .m-signature-pad--footer { display: none; margin: 0px; }
-  .m-signature-pad { box-shadow: none; border: none; }
-`

@@ -12,7 +12,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 10,
     padding: 12,
-    marginBottom: 8,
+    minHeight: 56,
     borderWidth: 1,
     borderColor: colors.gray[200],
   },
@@ -22,9 +22,18 @@ export const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 8,
   },
-  line: {
-    padding: 20,
+  text: {
     fontSize: 14,
     color: colors.gray[800],
+  },
+  progresso: {
+    marginTop: 8,
+    gap: 2,
+  },
+  acao: {
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.blue[900],
   },
 });

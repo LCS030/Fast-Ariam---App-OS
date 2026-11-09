@@ -2,6 +2,12 @@
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
+## Configuracao da API
+
+Copie `.env.example` para `.env` e defina `EXPO_PUBLIC_API_URL` (URL do servidor FastAPI, com ou sem `/api`).
+Sem a variavel, o app usa `http://10.0.2.2:8000` somente em desenvolvimento (emulador Android); em build de
+producao a API fica "nao configurada". Em producao use HTTPS. Nao coloque segredos em variaveis `EXPO_PUBLIC_*`.
+
 ## Get started
 
 1. Install dependencies

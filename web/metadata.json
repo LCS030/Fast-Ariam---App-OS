@@ -1,0 +1,10 @@
+{
+  "name": "Remix Fast-Ariam---App-OS",
+  "description": "Sistema de Gestão de Ordens de Serviço, Deslocamento e Atendimento Técnico — FAST Gôndolas & Check-outs",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

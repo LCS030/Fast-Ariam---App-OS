@@ -50,3 +50,4 @@ class RespostaArquivo(BaseModel):
     client_file_id: UUID
     url: str
     resultado: str  # aplicado | duplicado
+    sha256: Optional[str] = None  # SHA-256 dos bytes que o servidor gravou (o app pode conferir com o seu)

@@ -37,7 +37,8 @@ def _garantir_email_cnpj_unicos(db: Session, email: Optional[str], cnpj: Optiona
         if query.first():
             raise HTTPException(status_code=409, detail="Já existe um técnico cadastrado com este e-mail.")
     if cnpj is not None:
-        query = db.query(TecnicoModel.id_tecnico).filter(TecnicoModel.cnpj == cnpj)
+        # O CNPJ está cifrado: a unicidade usa o índice cego (HMAC dos 14 dígitos), que ignora a máscara.
+        query = db.query(TecnicoModel.id_tecnico).filter(TecnicoModel.cnpj_idx == TecnicoModel.indice_do_cnpj(cnpj))
         if excluir_id is not None:
             query = query.filter(TecnicoModel.id_tecnico != excluir_id)
         if query.first():

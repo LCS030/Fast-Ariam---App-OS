@@ -151,3 +151,5 @@ class FinalizarAtendimentoPayload(PayloadComHorario):
     nome_cliente: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
     documento_cliente: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
     assinatura_base64: str = Field(..., min_length=1)
+    assinatura_sha256: Optional[str] = Field(
+        None, description="SHA-256 (hex) dos bytes da assinatura, calculado no aparelho; 422 se divergir.")

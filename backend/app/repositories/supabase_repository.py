@@ -374,8 +374,9 @@ class SQLRepository:
         self.db.delete(equipamento)
         self._finish(commit)
 
-    def add_servico_foto(self, servico_id: int, tipo: str, url: str, commit: bool = True) -> ServicoFoto:
-        foto = ServicoFoto(id_servico=servico_id, tipo=tipo, url=url)
+    def add_servico_foto(self, servico_id: int, tipo: str, url: str, commit: bool = True,
+                         sha256: Optional[str] = None) -> ServicoFoto:
+        foto = ServicoFoto(id_servico=servico_id, tipo=tipo, url=url, sha256=sha256)
         self.db.add(foto)
         self._finish(commit)
         if commit:
@@ -431,9 +432,26 @@ class SQLRepository:
         self._finish(commit)
         return self.get_visita_by_id(visita_id)
 
-    def add_comprovante(self, visita_id: int, tipo: str, url: str, commit: bool = True) -> Comprovante:
+    def set_arquivo_visita(self, visita_id: int, campo: str, url: str, sha256: Optional[str],
+                           commit: bool = True) -> Optional[Visita]:
+        """Grava a URL de uma foto de odometro/deslocamento na visita e o SHA-256 do arquivo em `arquivos_sha256`."""
+        visita = self.db.get(Visita, visita_id)
+        if visita is None:
+            return None
+        setattr(visita, campo, url)
+        hashes = dict(visita.arquivos_sha256 or {})  # novo dict: o ORM só detecta a mudança de JSON por atribuição
+        if sha256:
+            hashes[campo] = sha256
+        else:
+            hashes.pop(campo, None)
+        visita.arquivos_sha256 = hashes
+        self._finish(commit)
+        return visita
+
+    def add_comprovante(self, visita_id: int, tipo: str, url: str, commit: bool = True,
+                        sha256: Optional[str] = None) -> Comprovante:
         """Registra um comprovante ('pedagio' ou 'frete') na tabela `comprovante` (SDD 4.6)."""
-        comprovante = Comprovante(id_visita=visita_id, tipo=tipo, url=url)
+        comprovante = Comprovante(id_visita=visita_id, tipo=tipo, url=url, sha256=sha256)
         self.db.add(comprovante)
         self._finish(commit)
         return comprovante

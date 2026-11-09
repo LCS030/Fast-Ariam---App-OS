@@ -3,6 +3,8 @@ Configuração central do backend (SDD seção 2 e 6.11).
 
 Tudo que varia por ambiente vem de variáveis de ambiente / .env. Nenhum segredo é hardcoded.
 """
+import base64
+import binascii
 import logging
 import os
 from typing import List, Optional
@@ -36,6 +38,90 @@ if len(SECRET_KEY) < SECRET_KEY_MIN_LENGTH:
 # O algoritmo nunca pode vir "livre": somente HMAC simétrico (a SDD v0.3 documenta HS256). Impede "none" por configuração.
 if ALGORITHM not in ("HS256", "HS384", "HS512"):
     raise ValueError("ALGORITHM inválido. Use HS256 (padrão), HS384 ou HS512.")
+
+
+# --- Chaves de cifragem e integridade (Confidencialidade / Integridade) -----------------------------------------------
+# Três chaves DISTINTAS, de 32 bytes em base64, uma por finalidade (nunca reutilizar entre si nem com a SECRET_KEY):
+#   DATA_ENCRYPTION_KEY -> AES-256-GCM dos campos sensíveis (CPF, dados bancários...) e da assinatura em disco;
+#   INDEX_KEY           -> HMAC do índice cego (busca/unicidade de CNPJ sem guardar o valor em claro);
+#   INTEGRITY_KEY       -> HMAC-SHA256 do selo de integridade da visita.
+# São obrigatórias em TODOS os ambientes: a API não sobe sem elas.
+def _chave_32_bytes(nome: str) -> bytes:
+    bruto = (os.getenv(nome) or "").strip().strip('"').strip("'")
+    if not bruto:
+        raise ValueError(f"{nome} não definida no .env. Gere com: "
+                         'python -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"')
+    try:
+        chave = base64.b64decode(bruto, validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError(f"{nome} inválida: deve estar codificada em base64.")
+    if len(chave) != 32:
+        raise ValueError(f"{nome} inválida: deve ter exatamente 32 bytes (AES-256 / HMAC-SHA256); veio com {len(chave)}.")
+    return chave
+
+
+DATA_ENCRYPTION_KEY: bytes = _chave_32_bytes("DATA_ENCRYPTION_KEY")
+INDEX_KEY: bytes = _chave_32_bytes("INDEX_KEY")
+INTEGRITY_KEY: bytes = _chave_32_bytes("INTEGRITY_KEY")
+
+if len({DATA_ENCRYPTION_KEY, INDEX_KEY, INTEGRITY_KEY, SECRET_KEY.encode("utf-8")}) < 4:
+    raise ValueError("DATA_ENCRYPTION_KEY, INDEX_KEY, INTEGRITY_KEY e SECRET_KEY devem ser todas diferentes entre si.")
+
+
+def _interpretar_flag(bruto: Optional[str], padrao: bool) -> bool:
+    if bruto is None or not bruto.strip():
+        return padrao
+    return bruto.strip().lower() in ("1", "true", "yes", "sim", "on")
+
+
+def _flag(nome: str, padrao: bool) -> bool:
+    return _interpretar_flag(os.getenv(nome), padrao)
+
+
+def legacy_plaintext_enabled(raw: Optional[str], production: bool) -> bool:
+    """Modo de transição da cifragem. Padrão False; ligado com ENV=production é recusado (a aplicação não inicia)."""
+    ligado = _interpretar_flag(raw, False)
+    if ligado and production:
+        raise ValueError("ENCRYPTION_ALLOW_LEGACY_PLAINTEXT não pode ser true com ENV=production: migre os dados com "
+                         "scripts/cifrar_dados_existentes.py e desligue.")
+    return ligado
+
+
+# Modo de TRANSIÇÃO da cifragem. Padrão FALSE (seguro): um valor sem o prefixo "enc1:" numa coluna cifrada é tratado como
+# adulteração (erro), não como dado legado — senão quem grava um CPF em claro direto no banco seria aceito sem alarme.
+# Só ligue (true) temporariamente, em dev/teste, enquanto houver linhas antigas em texto puro a migrar com
+# scripts/cifrar_dados_existentes.py. Em ENV=production ligar é RECUSADO (a aplicação não inicia).
+ENCRYPTION_ALLOW_LEGACY_PLAINTEXT: bool = legacy_plaintext_enabled(os.getenv("ENCRYPTION_ALLOW_LEGACY_PLAINTEXT"), IS_PRODUCTION)
+
+# O servidor SEMPRE calcula e grava o SHA-256 de cada arquivo recebido. Esta chave só decide se o hash calculado NO
+# APARELHO (campo `sha256`) é obrigatório. Padrão true (app ainda não distribuído); use false só se houver app antigo em uso.
+SHA256_ORIGEM_OBRIGATORIO: bool = _flag("SHA256_ORIGEM_OBRIGATORIO", True)
+
+
+# --- Armazenamento de arquivos (Supabase Storage privado, SEG-09 / PR-03) ---------------------------------------------
+# Com SUPABASE_URL + SUPABASE_SERVICE_KEY o backend grava/lê fotos, comprovantes e assinaturas (.enc) no bucket PRIVADO
+# STORAGE_BUCKET; sem eles usa o disco local (somente dev/teste). A chave de serviço ignora o RLS: fica SÓ no backend,
+# nunca no painel, no app, em log ou no Git. Em ENV=production o Supabase é obrigatório (disco local é efêmero).
+SUPABASE_URL: Optional[str] = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/") or None
+SUPABASE_SERVICE_KEY: Optional[str] = (os.getenv("SUPABASE_SERVICE_KEY") or "").strip().strip('"').strip("'") or None
+STORAGE_BUCKET: str = (os.getenv("STORAGE_BUCKET") or "fast-ariam-privado").strip()
+
+
+def resolver_storage_backend(url: Optional[str], chave: Optional[str], production: bool) -> str:
+    """'supabase' quando URL e chave existem; 'local' quando nenhuma existe (recusado em produção); erro se só uma."""
+    if bool(url) != bool(chave):
+        raise ValueError("SUPABASE_URL e SUPABASE_SERVICE_KEY devem ser definidas JUNTAS (ou nenhuma, para disco local).")
+    if url:
+        if not url.lower().startswith("https://"):
+            raise ValueError("SUPABASE_URL deve usar https://.")
+        return "supabase"
+    if production:
+        raise ValueError("Em ENV=production os arquivos devem ir para o Supabase Storage: defina SUPABASE_URL e "
+                         "SUPABASE_SERVICE_KEY (o disco local do servidor é efêmero e não é privado).")
+    return "local"
+
+
+STORAGE_BACKEND: str = resolver_storage_backend(SUPABASE_URL, SUPABASE_SERVICE_KEY, IS_PRODUCTION)
 
 
 # --- CORS (SEG-03 / PR-18) --------------------------------------------------------------------------------------------

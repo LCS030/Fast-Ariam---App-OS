@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.erros import ErroRegra
 from app.core.security import require_technician_role
 from app.db.database import get_db
 from app.models.sync_arquivo import SyncArquivo, TIPOS_ARQUIVO
@@ -35,19 +36,25 @@ def receber_arquivo(
         id_os: int = Form(...),
         id_visita: int = Form(...),
         file: UploadFile = File(...),
+        sha256: Optional[str] = Form(None, description="SHA-256 (hex) calculado no aparelho na captura; 422 se divergir."),
         repo: SQLRepository = Depends(get_repo),
         current_user: dict = Depends(require_technician_role),
 ):
     """
-    Recebe e valida o arquivo (JPEG/PNG real, 15 MB; conserto 960x1280 em qualquer orientação) e o associa ao
-    `client_file_id`. A ligação ao registro final ocorre quando o evento que o referencia é aplicado (SY-08).
-    Reenviar o mesmo `client_file_id` devolve a url já gravada (`duplicado`).
+    Recebe e valida o arquivo (hash SHA-256, JPEG/PNG real, 15 MB; conserto 960x1280 em qualquer orientação) e o
+    associa ao `client_file_id`. A ligação ao registro final ocorre quando o evento que o referencia é aplicado (SY-08).
+    Reenviar o mesmo `client_file_id` devolve a url já gravada (`duplicado`). O servidor sempre grava o SHA-256 dos
+    bytes recebidos; se o aparelho informou o seu e divergir => 422 HASH_DIVERGENTE (o app deve reenviar).
     """
     existente = repo.db.get(SyncArquivo, client_file_id)
     if existente is not None:
         if existente.id_tecnico != current_user["user_id"]:
             raise HTTPException(status_code=403, detail="client_file_id já utilizado por outro dispositivo.")
-        return RespostaArquivo(client_file_id=client_file_id, url=existente.url, resultado=sync_service.DUPLICADO)
+        if sha256 and existente.sha256 and sha256.strip().lower() != existente.sha256:
+            # mesmo identificador, conteúdo diferente: nunca tratar como "duplicado" (seria aceitar troca de arquivo)
+            raise ErroRegra(409, "client_file_id já usado com outro conteúdo.", "ARQUIVO_DIVERGENTE")
+        return RespostaArquivo(client_file_id=client_file_id, url=existente.url, resultado=sync_service.DUPLICADO,
+                               sha256=existente.sha256)
     if tipo_arquivo not in TIPOS_ARQUIVO:
         raise HTTPException(status_code=422, detail=f"tipo_arquivo inválido. Use: {', '.join(TIPOS_ARQUIVO)}.")
 
@@ -60,12 +67,15 @@ def receber_arquivo(
 
     prefixo = f"chamado_{id_os}_visita_{id_visita}_sync_{tipo_arquivo}"
     if tipo_arquivo == "assinatura":
-        url = file_service.salvar_assinatura(file_service.validar_imagem_upload(file))
+        imagem = file_service.validar_imagem_upload(file, sha256_informado=sha256)
+        url, sha_calculado = file_service.salvar_assinatura(imagem), imagem.sha256
     else:
-        url = file_service.save_upload_file(file, prefixo, exigir_resolucao_minima=(tipo_arquivo == "foto_conserto"))
+        salvo = file_service.salvar_upload(file, prefixo, exigir_resolucao_minima=(tipo_arquivo == "foto_conserto"),
+                                           sha256_informado=sha256)
+        url, sha_calculado = salvo.url, salvo.sha256
     try:
         repo.db.add(SyncArquivo(client_file_id=client_file_id, id_tecnico=current_user["user_id"], id_os=id_os,
-                                id_visita=visita.id_visita, tipo_arquivo=tipo_arquivo, url=url))
+                                id_visita=visita.id_visita, tipo_arquivo=tipo_arquivo, url=url, sha256=sha_calculado))
         repo.commit()
     except IntegrityError:  # reenvio simultâneo do mesmo client_file_id
         repo.rollback()
@@ -73,12 +83,13 @@ def receber_arquivo(
         existente = repo.db.get(SyncArquivo, client_file_id)
         if existente is None:
             raise
-        return RespostaArquivo(client_file_id=client_file_id, url=existente.url, resultado=sync_service.DUPLICADO)
+        return RespostaArquivo(client_file_id=client_file_id, url=existente.url, resultado=sync_service.DUPLICADO,
+                               sha256=existente.sha256)
     except Exception:
         repo.rollback()
         file_service.remover_arquivo_por_url(url)
         raise
-    return RespostaArquivo(client_file_id=client_file_id, url=url, resultado=sync_service.APLICADO)
+    return RespostaArquivo(client_file_id=client_file_id, url=url, resultado=sync_service.APLICADO, sha256=sha_calculado)
 
 
 @router.post("/eventos", response_model=RespostaLote)

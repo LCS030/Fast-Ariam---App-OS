@@ -30,4 +30,5 @@ class SyncArquivo(Base):
     id_visita = Column(Integer, ForeignKey("visita.id_visita"), nullable=False)
     tipo_arquivo = Column(String(30), nullable=False)
     url = Column(String(255), nullable=False)
+    sha256 = Column(String(64))  # SHA-256 dos bytes recebidos (calculado pelo servidor)
     recebido_em = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

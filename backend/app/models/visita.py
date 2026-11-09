@@ -1,18 +1,14 @@
 from sqlalchemy import (
-    Column, Integer, String, Boolean, Date, Text, ForeignKey, Numeric, DateTime, CheckConstraint, text,
+    Column, Integer, String, Boolean, Date, Text, ForeignKey, Numeric, DateTime, JSON, text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
+from app.core.crypto import TextoCifrado
 from app.db.database import Base
 
 
 class Visita(Base):
     __tablename__ = "visita"
-    __table_args__ = (
-        # SDD 4.7: CPF somente digitos (a validacao dos digitos verificadores e do backend).
-        CheckConstraint("documento_cliente IS NULL OR documento_cliente ~ '^[0-9]{11}$'",
-                        name="ck_visita_documento_cliente"),
-    )
-
     id_visita = Column(Integer, primary_key=True, autoincrement=True)
     id_os = Column(Integer, ForeignKey("ordem_servico.id_os"), nullable=False)
     data_visita = Column(Date, nullable=False)
@@ -62,7 +58,16 @@ class Visita(Base):
     # --- Assinatura do cliente na visita (SDD 4.7, PR-10, PR-35) ---
     assinatura_url = Column(String(255))            # caminho no Storage
     nome_cliente_assinatura = Column(String(100))   # quem assinou
-    documento_cliente = Column(String(11))          # CPF, so digitos
+    # CPF (11 digitos, validado pelo backend em `cpf_valido`), CIFRADO em repouso. O CHECK de 11 digitos foi retirado
+    # (nao se aplica a texto cifrado); a regra continua garantida na camada de servico/esquema.
+    documento_cliente = Column(TextoCifrado("visita.documento_cliente"))
+
+    # --- Integridade (SHA-256 dos arquivos e selo HMAC da visita) ---
+    assinatura_sha256 = Column(String(64))          # hash dos bytes da assinatura ANTES de cifrar
+    # {campo_url: sha256} das fotos de odometro/deslocamento (6 colunas *_url desta tabela)
+    arquivos_sha256 = Column(JSON().with_variant(JSONB(), "postgresql"))
+    selo_integridade = Column(String(64))           # HMAC-SHA256(INTEGRITY_KEY, JSON canonico) ao finalizar atendimento
+    selo_versao = Column(Integer)                   # versao do esquema canonico do selo
 
     comprovantes = relationship("Comprovante", back_populates="visita", cascade="all, delete-orphan")
     ordem_servico = relationship("OrdemServico", back_populates="visitas")

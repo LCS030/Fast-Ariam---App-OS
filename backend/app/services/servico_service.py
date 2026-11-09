@@ -15,7 +15,7 @@ from fastapi import HTTPException
 from app.repositories.supabase_repository import SQLRepository
 from app.schemas.base_schemas import StatusChamado
 from app.services import auditoria_service as auditoria
-from app.services import custo_service, visita_service
+from app.services import custo_service, integridade_service, visita_service
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,7 @@ def remover_foto_admin(repo: SQLRepository, chamado, visita, servico, foto_id: i
     try:
         registrar_foto_corrigida(repo, chamado, visita, servico, foto, "removida", usuario)
         repo.delete_foto_servico(foto, commit=False)
+        integridade_service.resselar_visita(repo.db, chamado, visita, usuario, "foto_removida_admin")
         repo.commit()
     except Exception:
         repo.rollback()
@@ -177,6 +178,7 @@ def corrigir_materiais_admin(repo: SQLRepository, chamado, visita, servico, mate
         repo.db.refresh(chamado)  # a árvore da OS reflete os materiais corrigidos no cálculo
         anterior, custo = custo_service.recalcular_custo_finalizado(repo.db, chamado)
         repo.db.refresh(servico)
+        integridade_service.resselar_visita(repo.db, chamado, visita, usuario, "materiais_corrigidos_admin")
         auditoria.registrar_acao(
             repo.db, id_os=chamado.id_os, usuario=usuario, acao=auditoria.MATERIAIS_CORRIGIDOS_ADMIN,
             payload={"id_visita": visita.id_visita, "id_servico": servico.id_servico,

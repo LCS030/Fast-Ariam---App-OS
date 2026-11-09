@@ -19,7 +19,7 @@ from app.core.validators import cpf_valido, normalizar_cpf
 from app.repositories.supabase_repository import SQLRepository
 from app.schemas.base_schemas import StatusChamado
 from app.services import auditoria_service as auditoria
-from app.services import custo_service, equipamento_service, file_service
+from app.services import custo_service, equipamento_service, file_service, integridade_service
 from app.services.tempo import agora_utc, data_negocio, hhmm_negocio
 from app.services.chamado_service import AcaoOS, exigir_status, validar_transicao
 
@@ -381,10 +381,15 @@ def pausar(repo: SQLRepository, chamado, visita, motivo: str, descricao: Optiona
 
 def finalizar_atendimento(repo: SQLRepository, chamado, visita, nome_cliente: str, documento_cliente: str,
                           assinatura_base64: Optional[str], ocorrido_em: Optional[datetime], usuario: dict,
-                          assinatura_url: Optional[str] = None) -> Dict[str, str]:
+                          assinatura_url: Optional[str] = None,
+                          assinatura_sha256: Optional[str] = None) -> Dict[str, str]:
     """
     RN-22 / RN-23 / PR-10 / PR-35: grava nome, CPF (só dígitos) e assinatura NA VISITA. Bloqueia com pausa ativa (400).
     O status da OS não muda: ela segue Em Atendimento até a volta.
+
+    Integridade: grava o SHA-256 da assinatura e o SELO HMAC da visita (integridade_service) antes do commit.
+    `assinatura_sha256`: no envio online é o hash informado pelo aparelho (conferido contra os bytes, 422 se divergir);
+    na sincronização (`assinatura_url` presente) é o hash já calculado pelo servidor ao receber o arquivo.
     """
     exigir_visita_vigente(repo, chamado, visita)
     if pausa_ativa(repo, visita.id_visita) is not None:
@@ -397,7 +402,9 @@ def finalizar_atendimento(repo: SQLRepository, chamado, visita, nome_cliente: st
     if not cpf_valido(documento_cliente):
         raise HTTPException(status_code=422, detail="CPF inválido")
     # `assinatura_url` (sincronização offline): o arquivo já foi recebido e validado em /api/sync/arquivos.
-    imagem = None if assinatura_url else file_service.decodificar_assinatura(assinatura_base64)  # 400 / 413
+    imagem = (None if assinatura_url
+              else file_service.decodificar_assinatura(assinatura_base64, assinatura_sha256))  # 400 / 413 / 422 (hash)
+    sha_assinatura = assinatura_sha256 if assinatura_url else imagem.sha256
     # TR-13 / RN-44 (v0.5): conserto salvo + foto de conserto de cada equipamento, ANTES de gravar a assinatura.
     chamado = repo.lock_chamado(chamado.id_os) or chamado
     equipamento_service.exigir_pronto_para_finalizar(repo, chamado, visita)
@@ -410,13 +417,18 @@ def finalizar_atendimento(repo: SQLRepository, chamado, visita, nome_cliente: st
             assinatura_url = file_service.salvar_assinatura(imagem)
             criou_arquivo = True
         visita.assinatura_url = assinatura_url
+        visita.assinatura_sha256 = sha_assinatura
         visita.nome_cliente_assinatura = nome_cliente
         visita.documento_cliente = normalizar_cpf(documento_cliente)
+        # Selo HMAC no mesmo commit da finalização. Também vai para o log_acao (2ª cópia): se alguém anular o selo da
+        # visita no banco, a verificação acusa "selo_removido" em vez de tratar como legado.
+        selo = integridade_service.selar_visita(repo.db, chamado, visita)
         auditoria.registrar_acao(repo.db, id_os=chamado.id_os, usuario=usuario,
                                  acao=auditoria.ATENDIMENTO_FINALIZADO,
                                  payload={"id_visita": visita.id_visita,
                                           "equipamentos_conferidos": [e.id_os_equipamento for e in
-                                                                      repo.get_os_equipamentos(chamado.id_os)]})
+                                                                      repo.get_os_equipamentos(chamado.id_os)],
+                                          "selo": selo, "selo_versao": integridade_service.SELO_VERSAO})
         repo.commit()
     except Exception:
         repo.rollback()

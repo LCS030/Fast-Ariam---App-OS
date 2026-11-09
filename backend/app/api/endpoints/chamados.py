@@ -13,8 +13,10 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi.responses import Response as RespostaBinaria
 from sqlalchemy.orm import Session
 
+from app.core.crypto import ErroDecifragem
 from app.core.security import get_current_active_user, require_admin_role, require_technician_role
 from app.db.database import get_db
 from app.repositories.supabase_repository import SQLRepository
@@ -27,7 +29,8 @@ from app.schemas.servico_equipamento import (SalvarConsertoPayload, ServicoEquip
 from app.schemas.visita import (FinalizarAtendimentoPayload, IniciarAtendimentoPayload, PausarPayload, Visita,
                                 VisitaCreate, VisitaUpdate)
 from app.services import (auditoria_service, chamado_service, custo_service, equipamento_service, file_service,
-                          servico_service, visita_service)
+                          integridade_service, servico_service, visita_service)
+from app.services.arquivo_service import foto_pertence_a_os
 from app.services.chamado_service import carregar_chamado, carregar_visita, exigir_status
 from app.schemas.base_schemas import StatusChamado
 
@@ -356,6 +359,7 @@ def upload_foto_deslocamento(
         file: UploadFile = File(...),
         tipo: str = Form(...),  # "ida" | "volta"
         momento: str = Form(...),  # "inicio" | "fim"
+        sha256: Optional[str] = Form(None, description="SHA-256 (hex) calculado no aparelho; 422 se divergir."),
         repo: SQLRepository = Depends(get_repo),
         current_user: dict = Depends(get_current_active_user),
 ):
@@ -370,9 +374,10 @@ def upload_foto_deslocamento(
         raise HTTPException(status_code=400, detail="momento inválido")
 
     campo = f"foto_{momento}_{tipo}_url"  # ex.: foto_inicio_ida_url
-    url = file_service.save_upload_file(file, f"chamado_{chamado_id}_visita_{visita_id}_{campo}")
+    salvo = file_service.salvar_upload(file, f"chamado_{chamado_id}_visita_{visita_id}_{campo}", sha256_informado=sha256)
+    url = salvo.url
     try:
-        repo.update_visita(visita.id_visita, {campo: url}, commit=False)
+        repo.set_arquivo_visita(visita.id_visita, campo, url, salvo.sha256, commit=False)
         _registrar_upload(repo, chamado, current_user, id_visita=visita.id_visita, campo=campo)
     except Exception:
         file_service.remover_arquivo_por_url(url)
@@ -389,6 +394,7 @@ def upload_file_visita(
         current_user: dict = Depends(get_current_active_user),
         file: UploadFile = File(...),
         file_type: str = Form(..., description="Campo da visita alimentado pelo arquivo."),
+        sha256: Optional[str] = Form(None, description="SHA-256 (hex) calculado no aparelho; 422 se divergir."),
 ):
     """
     Upload genérico. `file_type` simples (odometro_*_url, foto_*_url) grava a URL na coluna da visita;
@@ -401,12 +407,14 @@ def upload_file_visita(
     if file_type not in SINGLE_FILE_FIELDS and file_type not in COMPROVANTE_FIELDS:
         raise HTTPException(status_code=400, detail=f"Tipo de arquivo inválido: '{file_type}'.")
 
-    url = file_service.save_upload_file(file, f"chamado_{chamado_id}_visita_{visita_id}_{file_type}")
+    salvo = file_service.salvar_upload(file, f"chamado_{chamado_id}_visita_{visita_id}_{file_type}",
+                                       sha256_informado=sha256)
+    url = salvo.url
     try:
         if file_type in COMPROVANTE_FIELDS:
-            repo.add_comprovante(visita.id_visita, COMPROVANTE_FIELDS[file_type], url, commit=False)
+            repo.add_comprovante(visita.id_visita, COMPROVANTE_FIELDS[file_type], url, commit=False, sha256=salvo.sha256)
         else:
-            repo.update_visita(visita.id_visita, {file_type: url}, commit=False)
+            repo.set_arquivo_visita(visita.id_visita, file_type, url, salvo.sha256, commit=False)
         _registrar_upload(repo, chamado, current_user, id_visita=visita.id_visita, campo=file_type)
     except Exception:
         file_service.remover_arquivo_por_url(url)
@@ -473,7 +481,80 @@ def finalizar_atendimento(
     visita = carregar_visita(repo, chamado, visita_id)
     return visita_service.finalizar_atendimento(
         repo, chamado, visita, payload.nome_cliente, payload.documento_cliente, payload.assinatura_base64,
-        payload.ocorrido_em, current_user)
+        payload.ocorrido_em, current_user, assinatura_sha256=payload.assinatura_sha256)
+
+
+@router.get("/{chamado_id}/verificar-integridade")
+def verificar_integridade(
+        chamado_id: int,
+        repo: SQLRepository = Depends(get_repo),
+        admin_user: dict = Depends(require_admin_role),
+):
+    """
+    Integridade (admin): recalcula o selo HMAC de cada visita finalizada e re-hasheia os arquivos em disco.
+    `estado` por visita: integro | adulterado | sem_selo (finalizada antes do selo) | nao_finalizada. A consulta é
+    auditada (INTEGRIDADE_VERIFICADA). Não altera dado algum.
+    """
+    chamado = carregar_chamado(repo, chamado_id, admin_user)
+    resultado = integridade_service.verificar_chamado(repo.db, chamado)
+    try:
+        auditoria_service.registrar_acao(
+            repo.db, id_os=chamado.id_os, usuario=admin_user, acao=auditoria_service.INTEGRIDADE_VERIFICADA,
+            payload={"estado": resultado["estado"],
+                     "visitas": {str(v["id_visita"]): v["estado"] for v in resultado["visitas"]}})
+        repo.commit()
+    except Exception:
+        repo.rollback()
+        raise
+    return resultado
+
+
+@router.get("/{chamado_id}/arquivos/conteudo", response_class=RespostaBinaria)
+def baixar_arquivo(
+        chamado_id: int,
+        url: str = Query(..., description="Referência da foto (`/static/uploads/...`), como veio nas respostas da API."),
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
+):
+    """
+    Foto, comprovante ou foto de odômetro/deslocamento da OS, lida do armazenamento privado e entregue só a quem pode ver
+    a OS (admin ou técnico atribuído). O arquivo precisa pertencer a ESTA OS: nome adivinhado de outra OS devolve 404.
+    A assinatura NÃO sai por aqui (tem rota própria). Substitui o antigo `/static/uploads` público (SEG-09).
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    if not url.startswith(file_service.UPLOAD_URL_PREFIX + "/") or not foto_pertence_a_os(repo.db, chamado.id_os, url):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado nesta OS.")
+    dados = file_service.ler_arquivo_por_url(url)
+    if dados is None:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no armazenamento.")
+    return RespostaBinaria(content=dados, media_type=file_service.tipo_mime_da_imagem(dados),
+                           headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/{chamado_id}/visitas/{visita_id}/assinatura", response_class=RespostaBinaria)
+def baixar_assinatura(
+        chamado_id: int,
+        visita_id: int,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
+):
+    """
+    Imagem da assinatura do cliente, decifrada em memória. Só admin ou o técnico atribuído à OS (mesma regra de
+    `carregar_chamado`). `/static/assinaturas` não é mais servido: este é o único caminho de leitura (SEG-09).
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    if not visita.assinatura_url:
+        raise HTTPException(status_code=404, detail="Esta visita não tem assinatura.")
+    try:
+        dados = file_service.ler_arquivo_por_url(visita.assinatura_url)
+    except ErroDecifragem:
+        logger.error("Assinatura da visita %s falhou na autenticação do AES-GCM (adulterada?)", visita.id_visita)
+        raise HTTPException(status_code=500, detail="Assinatura ilegível: falha de integridade. Avise o administrador.")
+    if dados is None:
+        raise HTTPException(status_code=404, detail="Arquivo da assinatura não encontrado.")
+    return RespostaBinaria(content=dados, media_type=file_service.tipo_mime_da_imagem(dados),
+                           headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.post("/{chamado_id}/visitas/{visita_id}/finalizar-dados", status_code=410)
@@ -587,6 +668,7 @@ def upload_foto_servico(
         servico_id: int,
         tipo: str = Form(..., description="'defeito' ou 'conserto'"),
         file: UploadFile = File(...),
+        sha256: Optional[str] = Form(None, description="SHA-256 (hex) calculado no aparelho; 422 se divergir."),
         repo: SQLRepository = Depends(get_repo),
         current_user: dict = Depends(get_current_active_user),
 ):
@@ -608,13 +690,15 @@ def upload_foto_servico(
     if not eh_admin:
         servico_service.exigir_fase_da_foto(chamado, visita, tipo)
 
-    url = file_service.save_upload_file(
+    salvo = file_service.salvar_upload(
         file, f"chamado_{chamado_id}_visita_{visita_id}_servico_{servico_id}_{tipo}",
-        exigir_resolucao_minima=(tipo == "conserto"))
+        exigir_resolucao_minima=(tipo == "conserto"), sha256_informado=sha256)
+    url = salvo.url
     try:
-        foto = repo.add_servico_foto(servico.id_servico, tipo, url, commit=False)
+        foto = repo.add_servico_foto(servico.id_servico, tipo, url, commit=False, sha256=salvo.sha256)
         if eh_admin:
             servico_service.registrar_foto_corrigida(repo, chamado, visita, servico, foto, "enviada", current_user)
+            integridade_service.resselar_visita(repo.db, chamado, visita, current_user, "foto_enviada_admin")
         else:
             _registrar_upload(repo, chamado, current_user, id_visita=visita.id_visita, id_servico=servico.id_servico,
                               campo=f"foto_{tipo}")

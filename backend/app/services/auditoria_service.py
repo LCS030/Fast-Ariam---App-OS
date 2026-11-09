@@ -37,6 +37,9 @@ CONSERTO_SALVO = "CONSERTO_SALVO"
 CONFLITO_ADMINISTRATIVO = "CONFLITO_ADMINISTRATIVO"  # SY-05 (ator: sistema)
 FOTO_CORRIGIDA_ADMIN = "FOTO_CORRIGIDA_ADMIN"
 MATERIAIS_CORRIGIDOS_ADMIN = "MATERIAIS_CORRIGIDOS_ADMIN"
+# Integridade (selo HMAC da visita)
+SELO_RESSELADO = "SELO_RESSELADO"  # correção administrativa pós-finalização recalculou o selo
+INTEGRIDADE_VERIFICADA = "INTEGRIDADE_VERIFICADA"  # admin consultou verificar-integridade (payload: estado)
 
 
 def registrar_acao(db: Session, *, id_os: Optional[int], usuario: Optional[Dict[str, Any]], acao: str,

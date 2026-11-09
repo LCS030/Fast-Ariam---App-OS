@@ -156,7 +156,7 @@ def _h_iniciar_deslocamento(tipo: str) -> Callable[[Ctx], None]:
         p = _Inicio(**ctx.payload)
         if p.foto_ref:
             arq = _arquivo(ctx, p.foto_ref, "foto_deslocamento")
-            ctx.repo.update_visita(ctx.visita.id_visita, {f"foto_inicio_{tipo}_url": arq.url}, commit=False)
+            ctx.repo.set_arquivo_visita(ctx.visita.id_visita, f"foto_inicio_{tipo}_url", arq.url, arq.sha256, commit=False)
         visita_service.iniciar_deslocamento(ctx.repo, ctx.chamado, ctx.visita, tipo, p.km_inicio, ctx.ocorrido)
     return handler
 
@@ -166,7 +166,7 @@ def _h_finalizar_deslocamento(tipo: str) -> Callable[[Ctx], None]:
         p = _Fim(**ctx.payload)
         if p.foto_ref:
             arq = _arquivo(ctx, p.foto_ref, "foto_deslocamento")
-            ctx.repo.update_visita(ctx.visita.id_visita, {f"foto_fim_{tipo}_url": arq.url}, commit=False)
+            ctx.repo.set_arquivo_visita(ctx.visita.id_visita, f"foto_fim_{tipo}_url", arq.url, arq.sha256, commit=False)
         visita_service.finalizar_deslocamento(ctx.repo, ctx.chamado, ctx.visita, tipo, p.km_fim, ctx.ocorrido,
                                               ctx.usuario)
     return handler
@@ -198,7 +198,7 @@ def _h_foto_servico(ctx: Ctx) -> None:
     _exigir_nao_finalizada(ctx)
     visita_service.exigir_visita_vigente(ctx.repo, ctx.chamado, ctx.visita)
     servico_service.exigir_fase_da_foto(ctx.chamado, ctx.visita, p.tipo)
-    ctx.repo.add_servico_foto(servico.id_servico, p.tipo, arq.url, commit=False)
+    ctx.repo.add_servico_foto(servico.id_servico, p.tipo, arq.url, commit=False, sha256=arq.sha256)
     auditoria.registrar_acao(ctx.repo.db, id_os=ctx.chamado.id_os, usuario=ctx.usuario, acao=auditoria.UPLOAD_ARQUIVO,
                              payload={"id_visita": ctx.visita.id_visita, "id_servico": servico.id_servico,
                                       "campo": f"foto_{p.tipo}"})
@@ -216,7 +216,7 @@ def _h_comprovante(ctx: Ctx) -> None:
             raise HTTPException(status_code=409,
                                 detail=f"Visita encerrada: '{campo}' não pode mais ser alterado (custo já fechado).")
         ctx.repo.update_visita(ctx.visita.id_visita, {campo: p.valor}, commit=False)
-    ctx.repo.add_comprovante(ctx.visita.id_visita, p.tipo, arq.url, commit=False)
+    ctx.repo.add_comprovante(ctx.visita.id_visita, p.tipo, arq.url, commit=False, sha256=arq.sha256)
     auditoria.registrar_acao(ctx.repo.db, id_os=ctx.chamado.id_os, usuario=ctx.usuario, acao=auditoria.UPLOAD_ARQUIVO,
                              payload={"id_visita": ctx.visita.id_visita,
                                       "campo": f"comprovante_{p.tipo}_urls"})
@@ -233,7 +233,7 @@ def _h_atendimento_finalizado(ctx: Ctx) -> None:
     arq = _arquivo(ctx, p.assinatura_ref, "assinatura")
     visita_service.finalizar_atendimento(ctx.repo, ctx.chamado, ctx.visita, p.nome_cliente.strip(),
                                          p.documento_cliente.strip(), None, ctx.ocorrido, ctx.usuario,
-                                         assinatura_url=arq.url)
+                                         assinatura_url=arq.url, assinatura_sha256=arq.sha256)
 
 
 HANDLERS: Dict[str, Callable[[Ctx], None]] = {

@@ -13,5 +13,6 @@ class ServicoFoto(Base):
     id_servico = Column(Integer, ForeignKey("servico_equipamento.id_servico", ondelete="CASCADE"), nullable=False)
     tipo = Column(String(20), nullable=False)  # 'defeito' ou 'conserto'
     url = Column(String(255), nullable=False)
+    sha256 = Column(String(64))  # SHA-256 dos bytes recebidos (calculado pelo servidor)
 
     servico = relationship("ServicoEquipamento", back_populates="fotos")

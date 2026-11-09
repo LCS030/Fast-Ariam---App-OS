@@ -369,7 +369,11 @@ def _importar_config(**env):
 def test_a2_producao_exige_secret_key_com_32_caracteres():
     r = _importar_config(ENV="production", SECRET_KEY="curta", CORS_ORIGINS="https://painel.exemplo.com")
     assert r.returncode != 0 and "32" in r.stderr
+    # produção também exige o armazenamento privado do Supabase (disco local é efêmero e não é privado)
     r = _importar_config(ENV="production", SECRET_KEY="x" * 32, CORS_ORIGINS="https://painel.exemplo.com")
+    assert r.returncode != 0 and "Supabase Storage" in r.stderr
+    r = _importar_config(ENV="production", SECRET_KEY="x" * 32, CORS_ORIGINS="https://painel.exemplo.com",
+                         SUPABASE_URL="https://exemplo.supabase.co", SUPABASE_SERVICE_KEY="chave-de-teste")
     assert r.returncode == 0, r.stderr
 
 

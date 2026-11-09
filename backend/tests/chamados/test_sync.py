@@ -217,7 +217,11 @@ def test_arquivos_validacao_idempotencia_e_permissao(fluxo, outro_tecnico):
     assert r.status_code == 200
     url = r.json()["url"]
     _, r2 = _arquivo(fluxo, "foto_conserto", size=(1280, 960), cfid=cfid)
-    assert r2.status_code == 200 and r2.json() == {"client_file_id": cfid, "url": url, "resultado": "duplicado"}
+    assert r2.status_code == 200
+    dup = r2.json()
+    assert {k: dup[k] for k in ("client_file_id", "url", "resultado")} == {"client_file_id": cfid, "url": url,
+                                                                           "resultado": "duplicado"}
+    assert len(dup["sha256"]) == 64  # o servidor devolve o hash que gravou
     assert _arquivo(fluxo, "foto_defeito", size=(40, 30))[1].status_code == 200  # defeito sem resolução mínima
     assert _arquivo(fluxo, "outro_tipo")[1].status_code == 422
     assert _arquivo(fluxo, "foto_defeito", headers=outro_tecnico.headers)[1].status_code == 403

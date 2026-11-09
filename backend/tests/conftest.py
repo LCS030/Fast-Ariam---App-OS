@@ -25,6 +25,17 @@ os.environ["SECRET_KEY"] = "chave-de-teste-nao-usar-em-producao-0123456789abcdef
 os.environ["ALGORITHM"] = "HS256"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
 os.environ["ENV"] = "test"
+# O Storage REAL (Supabase) nunca pode ser usado pelos testes: variáveis vazias (python-dotenv não sobrescreve variáveis já
+# definidas) => armazenamento em disco temporário. Os testes de Storage usam um bucket em memória / transporte simulado.
+os.environ["SUPABASE_URL"] = ""
+os.environ["SUPABASE_SERVICE_KEY"] = ""
+os.environ["STORAGE_BUCKET"] = "bucket-de-teste-nao-usar"
+# Chaves de TESTE (32 bytes em base64, distintas entre si; nunca usadas fora dos testes).
+os.environ["DATA_ENCRYPTION_KEY"] = "dGVzdGUtZGF0YS1lbmNyeXB0aW9uLWtleS0zMmJ5dGU="
+os.environ["INDEX_KEY"] = "dGVzdGUtaW5kZXgta2V5LTAxMjM0NTY3ODlhYmNkZWY="
+os.environ["INTEGRITY_KEY"] = "dGVzdGUtaW50ZWdyaXR5LWtleS0wMTIzNDU2Nzg5YWI="
+os.environ["SHA256_ORIGEM_OBRIGATORIO"] = "false"  # testes antigos sobem sem hash; os de hash ligam a flag por monkeypatch
+os.environ["ENCRYPTION_ALLOW_LEGACY_PLAINTEXT"] = "false"  # nos testes, texto puro em coluna cifrada = erro
 os.environ["CORS_ORIGINS"] = "http://localhost:5173,http://localhost:3000"
 os.environ["AUTO_CREATE_TABLES"] = "false"  # as tabelas são criadas abaixo, no SQLite temporário
 
@@ -34,6 +45,13 @@ from app.main import app  # noqa: E402  (importa todos os modelos)
 # Trava dupla: aborta a sessão inteira se, por qualquer motivo, o engine não for o SQLite temporário.
 if engine.url.get_backend_name() != "sqlite" or _TMP_DIR.replace("\\", "/") not in str(engine.url).replace("\\", "/"):
     pytest.exit("ABORTADO: os testes só podem rodar contra o SQLite temporário.", returncode=2)
+
+
+# Trava dupla do armazenamento: aborta a sessão inteira se, por qualquer motivo, os testes apontarem para o Supabase real.
+from app.core import config as _config  # noqa: E402
+
+if _config.STORAGE_BACKEND != "local" or _config.SUPABASE_URL or _config.SUPABASE_SERVICE_KEY:
+    pytest.exit("ABORTADO: os testes não podem usar o Supabase Storage real (STORAGE_BACKEND deve ser 'local').", returncode=2)
 
 
 def _remover_constraints_exclusivas_do_postgres() -> None:

@@ -1,0 +1,105 @@
+# =============================================================================
+# Fast Ariam - App OS  |  .gitignore consolidado (raiz do monorepo)
+# Cobre: backend/ (FastAPI), frontend/ (Expo/React Native) e web/ (Vite)
+# =============================================================================
+
+# --- Segredos e variaveis de ambiente ---------------------------------------
+# Versione apenas os *.env.example (sem valores reais).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+
+# --- Dependencias -----------------------------------------------------------
+node_modules/
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- Caches e artefatos de teste --------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.tsbuildinfo
+.eslintcache
+
+# --- Build / saida ----------------------------------------------------------
+dist/
+build/
+web-build/
+
+# --- Expo / React Native ----------------------------------------------------
+.expo/
+.expo-shared/
+# Gerados por "expo prebuild" (nativo); recriaveis a partir do app.json
+frontend/android/
+frontend/ios/
+*.apk
+*.aab
+*.ipa
+# Gerado pelo expo-cli (tipos de variaveis de ambiente)
+expo-env.d.ts
+
+# --- Dados gerados em execucao / dados pessoais (LGPD) ----------------------
+# Fotos de visitas e assinaturas de clientes NAO devem ir para o git.
+backend/static/uploads/*
+!backend/static/uploads/.gitkeep
+backend/static/assinaturas/*
+!backend/static/assinaturas/.gitkeep
+
+# Bancos locais e dados de teste
+*.csv
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Logs -------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# --- IDE / editor -----------------------------------------------------------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# --- Sistema operacional ----------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Ferramentas de IA (configuracao local) ---------------------------------
+.claude/settings.local.json
+.claude/worktrees/
+
+# --- Temporarios ------------------------------------------------------------
+*.tmp
+*.bak
+*~
+
+# --- Documento interno ja ignorado antes em frontend/.gitignore -------------
+frontend/PRD_Sistema_OS.md
+
+# --- Migrations SQL (decisao: nao versionar; ficam so na maquina local) -----
+backend/migrations/

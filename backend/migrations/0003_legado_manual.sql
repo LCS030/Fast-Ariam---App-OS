@@ -1,0 +1,84 @@
+-- =============================================================================
+-- 0003_legado_manual.sql  --  TRATAMENTO ASSISTIDO DE DADOS LEGADOS (nada aqui roda automaticamente)
+-- Todos os comandos estao COMENTADOS. Descomente um bloco por vez, somente apos decisao do PO/responsavel,
+-- dentro de transacao, com backup, e conferindo o SELECT de apoio de cada bloco.
+-- Estado do banco remoto em 2026-11-04: B1=0, B2=0, B3=0 (nenhum caso). Os blocos ficam para outros ambientes.
+-- NAO desatribui OS por desativacao de tecnico (RN-08a pendente).
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- BLOCO 1. 'Pendente' COM tecnico atribuido (viola "Pendente => sem tecnico"). Decisao necessaria do PO.
+--   Opcao A (recomendada quando o tecnico esta ativo e ha data_agendamento): a OS ja e, de fato, 'Agendado'.
+--   Opcao B: o admin quer realmente que a OS fique sem tecnico (triagem) -> desatribuir (perde a atribuicao;
+--            registrar em log_acao antes).
+--   Nao ha opcao automatica segura: ha ambiguidade entre "atribuicao correta com status errado" e vice-versa.
+-- -----------------------------------------------------------------------------
+-- SELECT o.id_os, o.id_tecnico_atribuido, t.is_active, o.data_agendamento
+--   FROM public.ordem_servico o JOIN public.tecnico t ON t.id_tecnico = o.id_tecnico_atribuido
+--  WHERE o.status = 'Pendente';
+--
+-- BEGIN;
+--   -- Opcao A
+--   -- UPDATE public.ordem_servico o SET status = 'Agendado'
+--   --   FROM public.tecnico t
+--   --  WHERE t.id_tecnico = o.id_tecnico_atribuido AND t.is_active
+--   --    AND o.status = 'Pendente' AND o.data_agendamento IS NOT NULL;
+--   -- Opcao B (somente para os ids aprovados)
+--   -- INSERT INTO public.log_acao (id_os, id_usuario, papel, acao, payload)
+--   --   SELECT id_os, NULL, 'sistema', 'MIGRACAO_DESATRIBUIDO',
+--   --          jsonb_build_object('id_tecnico_anterior', id_tecnico_atribuido, 'origem', '0003 bloco 1')
+--   --     FROM public.ordem_servico WHERE id_os IN (/* ids aprovados */);
+--   -- UPDATE public.ordem_servico SET id_tecnico_atribuido = NULL
+--   --  WHERE status = 'Pendente' AND id_os IN (/* ids aprovados */);
+-- -- COMMIT;   -- confira antes: SELECT count(*) FROM public.ordem_servico WHERE status='Pendente' AND id_tecnico_atribuido IS NOT NULL;
+
+-- -----------------------------------------------------------------------------
+-- BLOCO 2. 'Aberto' COM tecnico atribuido. PRD: "Aberto e legado; migrar para Pendente quando nao houver tecnico".
+--   Para 'Aberto' com tecnico o PRD e silencioso. PROPOSTA (nao aprovada): 'Agendado' se tecnico ativo.
+--   Se o tecnico estiver inativo, decidir caso a caso (RN-08a pendente) - nao alterar em massa.
+-- -----------------------------------------------------------------------------
+-- SELECT o.id_os, o.id_tecnico_atribuido, t.is_active, o.data_agendamento
+--   FROM public.ordem_servico o JOIN public.tecnico t ON t.id_tecnico = o.id_tecnico_atribuido
+--  WHERE o.status = 'Aberto';
+--
+-- BEGIN;
+--   -- UPDATE public.ordem_servico o SET status = 'Agendado'
+--   --   FROM public.tecnico t
+--   --  WHERE t.id_tecnico = o.id_tecnico_atribuido AND t.is_active AND o.status = 'Aberto';
+-- -- COMMIT;
+
+-- -----------------------------------------------------------------------------
+-- BLOCO 3. Canceladas sem motivo (bloqueia ck_os_cancelamento_motivo).
+--   Nao inventar motivo. Opcao: texto explicito de legado, aprovado pelo PO.
+-- -----------------------------------------------------------------------------
+-- SELECT id_os FROM public.ordem_servico
+--  WHERE is_cancelled AND length(btrim(coalesce(motivo_cancelamento,''))) = 0;
+-- -- UPDATE public.ordem_servico SET motivo_cancelamento = 'Cancelamento anterior a v0.3 (motivo nao registrado)'
+-- --  WHERE is_cancelled AND length(btrim(coalesce(motivo_cancelamento,''))) = 0;
+
+-- -----------------------------------------------------------------------------
+-- BLOCO 4. Backfill OPCIONAL de visita.*_em a partir dos HH:mm legados.
+--   ASSUNCOES (precisam de aprovacao): (i) o horario foi registrado no fuso America/Sao_Paulo;
+--   (ii) o evento ocorreu em data_visita (pode ser falso para virada de dia / OS pausada; ver visita 1).
+--   Valores '' ou fora do formato HH:mm sao ignorados (ficam NULL).
+--   Recomendacao DBA: NAO fazer para dados de teste; os novos campos nascem corretos pelo app.
+-- -----------------------------------------------------------------------------
+-- BEGIN;
+-- UPDATE public.visita SET
+--   ida_inicio_em         = coalesce(ida_inicio_em,         CASE WHEN hora_inicio_ida         ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN (data_visita + hora_inicio_ida::time)         AT TIME ZONE 'America/Sao_Paulo' END),
+--   ida_fim_em            = coalesce(ida_fim_em,            CASE WHEN hora_fim_ida            ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN (data_visita + hora_fim_ida::time)            AT TIME ZONE 'America/Sao_Paulo' END),
+--   atendimento_inicio_em = coalesce(atendimento_inicio_em, CASE WHEN hora_inicio_atendimento ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN (data_visita + hora_inicio_atendimento::time) AT TIME ZONE 'America/Sao_Paulo' END),
+--   atendimento_fim_em    = coalesce(atendimento_fim_em,    CASE WHEN hora_fim_atendimento    ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN (data_visita + hora_fim_atendimento::time)    AT TIME ZONE 'America/Sao_Paulo' END),
+--   volta_inicio_em       = coalesce(volta_inicio_em,       CASE WHEN hora_inicio_volta       ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN (data_visita + hora_inicio_volta::time)       AT TIME ZONE 'America/Sao_Paulo' END),
+--   volta_fim_em          = coalesce(volta_fim_em,          CASE WHEN hora_fim_volta          ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN (data_visita + hora_fim_volta::time)          AT TIME ZONE 'America/Sao_Paulo' END);
+-- COMMIT;
+
+-- -----------------------------------------------------------------------------
+-- BLOCO 5. Limpeza de strings vazias onde o contrato espera NULL (qualidade de dados; opcional).
+--   Observado no remoto: visita.hora_* = '' e foto_fim_volta_url = '' (visita 1), servico_foto.url = '' (3 linhas).
+--   servico_foto.url e NOT NULL: linhas com url '' sao fotos sem arquivo; confirmar com o Backend se podem ser removidas.
+-- -----------------------------------------------------------------------------
+-- UPDATE public.visita SET hora_chegada_cliente = NULLIF(hora_chegada_cliente,''),
+--        hora_fim_atendimento = NULLIF(hora_fim_atendimento,''), hora_fim_volta = NULLIF(hora_fim_volta,''),
+--        foto_fim_volta_url = NULLIF(foto_fim_volta_url,'');
+-- -- DELETE FROM public.servico_foto WHERE url = '';   -- SOMENTE com aprovacao explicita (remocao de dados)

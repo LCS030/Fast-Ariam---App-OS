@@ -4,7 +4,7 @@
 import * as SQLite from "expo-sqlite";
 
 const NOME_BANCO = "fast_ariam_offline.db";
-const VERSAO_SCHEMA = 1;
+const VERSAO_SCHEMA = 2;
 
 let abrindo: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -14,8 +14,10 @@ async function migrar(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync("PRAGMA synchronous = FULL;");
 
   const atual = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
-  if ((atual?.user_version ?? 0) >= VERSAO_SCHEMA) return;
+  const versao = atual?.user_version ?? 0;
+  if (versao >= VERSAO_SCHEMA) return;
 
+  if (versao < 1) {
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS meta (
       chave TEXT PRIMARY KEY NOT NULL,
@@ -73,6 +75,12 @@ async function migrar(db: SQLite.SQLiteDatabase): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS ix_arquivos_tecnico_status ON outbox_arquivos (id_tecnico, status);
   `);
+  }
+
+  // v2: SHA-256 de cada arquivo, calculado na captura (Integridade). Arquivos que ja estavam na fila ficam com NULL:
+  // o envio calcula o hash na hora para eles. ALTER TABLE ADD COLUMN preserva todas as linhas existentes.
+  await db.execAsync("ALTER TABLE outbox_arquivos ADD COLUMN sha256 TEXT;");
+
   await db.execAsync(`PRAGMA user_version = ${VERSAO_SCHEMA};`);
 }
 

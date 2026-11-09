@@ -3,7 +3,7 @@
 // /api/sync). Aqui permanecem os tipos do estado e o helper agoraIso(); as chamadas diretas
 // abaixo sao mantidas apenas como referencia dos endpoints online equivalentes.
 import api from "./api";
-import { anexarImagem, ArquivoImagem, UPLOAD_TIMEOUT_MS } from "./arquivo";
+import { anexarImagemComHash, ArquivoImagem, UPLOAD_TIMEOUT_MS } from "./arquivo";
 
 /** Situacao de um equipamento da OS na visita vigente (SDD 6.6.3, v0.5). */
 export interface EquipamentoEstado {
@@ -116,7 +116,7 @@ export async function uploadDeslocamento(
   momento: "inicio" | "fim"
 ) {
   const formData = new FormData();
-  anexarImagem(formData, "file", arquivo, `odometro_${tipo}_${momento}`);
+  await anexarImagemComHash(formData, "file", arquivo, `odometro_${tipo}_${momento}`);
   formData.append("tipo", tipo);
   formData.append("momento", momento);
 
@@ -190,7 +190,7 @@ export async function enviarComprovante(
   arquivo: ArquivoImagem
 ) {
   const formData = new FormData();
-  anexarImagem(formData, "file", arquivo, `comprovante_${tipo}`);
+  await anexarImagemComHash(formData, "file", arquivo, `comprovante_${tipo}`);
   formData.append(
     "file_type",
     tipo === "pedagio" ? "comprovante_pedagio_urls" : "comprovante_frete_urls"

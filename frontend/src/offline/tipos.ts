@@ -63,6 +63,8 @@ export interface ArquivoOutbox {
   /** null depois que o arquivo foi confirmado pelo servidor e liberado do aparelho. */
   caminho_local: string | null;
   mime: "image/jpeg" | "image/png";
+  /** SHA-256 (hex) calculado na captura; null so em arquivos enfileirados por uma versao antiga do app. */
+  sha256: string | null;
   id_os: number;
   id_visita: number;
   status: StatusFila;

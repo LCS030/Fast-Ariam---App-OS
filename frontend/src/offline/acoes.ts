@@ -11,6 +11,7 @@ import { resolucaoConsertoValida, type FotoCapturada } from "@/utils/camera";
 import { validarPausa } from "@/utils/pausa";
 import { cpfValido, soDigitos } from "@/utils/validators";
 import { copiarParaFila, salvarAssinaturaNaFila } from "./arquivos";
+import { sha256DoArquivo } from "./hash";
 import { obterOsLocal, OsLocal, rotuloDaOs } from "./cacheOS";
 import { atualizarEvento, gravarAcao, NovoArquivo, NovoEvento, novoUuid, obterEvento } from "./outbox";
 import { exigirSessaoOperante } from "./sessao";
@@ -87,11 +88,13 @@ async function arquivoParaFila(
 ): Promise<NovoArquivo> {
   const id = novoUuid();
   const caminho = await copiarParaFila(imagem, id);
+  const sha256 = await sha256DoArquivo(caminho); // hash na CAPTURA: prova que o arquivo nao mudou durante a fila
   return {
     client_file_id: id,
     tipo_arquivo: tipo,
     caminho_local: caminho,
     mime: imagem.mime,
+    sha256,
     id_os: ctx.idOs,
     id_visita: ctx.idVisita,
   };
@@ -289,6 +292,7 @@ export async function registrarFimAtendimento(
     tipo_arquivo: "assinatura",
     caminho_local: caminho,
     mime: "image/png",
+    sha256: await sha256DoArquivo(caminho),
     id_os: ctx.idOs,
     id_visita: ctx.idVisita,
   };

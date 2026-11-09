@@ -15,6 +15,7 @@ import { getErrorMessage } from "@/utils/alerts";
 import { arquivoExiste, removerArquivoLocal } from "./arquivos";
 import { substituirCache, ultimaAtualizacaoCache, RespostaMinhasOs } from "./cacheOS";
 import { gravarMeta, lerMeta } from "./db";
+import { sha256DoArquivo } from "./hash";
 import {
   arquivoEmUso,
   atualizarArquivo,
@@ -34,6 +35,8 @@ const MAX_EVENTOS_POR_LOTE = 200;
 const INTERVALO_BASE_MS = 60_000; // verificacao periodica
 const BACKOFF_INICIAL_MS = 15_000;
 const BACKOFF_MAXIMO_MS = 5 * 60_000;
+/** Reenvios de um arquivo cujo hash divergiu no servidor antes de marca-lo como rejeitado (nunca e descartado). */
+const MAX_TENTATIVAS_HASH_DIVERGENTE = 5;
 const REFRESH_CACHE_MS = 5 * 60_000; // atualiza o cache de OS ao menos a cada 5 min online
 
 export type MotivoSync = "ok" | "ocupado" | "offline" | "sem_sessao" | "login_necessario" | "erro";
@@ -78,6 +81,13 @@ function erroDefinitivo(err: unknown): boolean {
   return s >= 400 && s < 500 && s !== 401 && s !== 408 && s !== 429;
 }
 
+/** `codigo` estavel devolvido pela API no corpo do erro (ex.: HASH_DIVERGENTE). */
+function codigoDoErro(err: unknown): string | undefined {
+  if (!isAxiosError(err)) return undefined;
+  const dados = err.response?.data as { codigo?: unknown } | undefined;
+  return typeof dados?.codigo === "string" ? dados.codigo : undefined;
+}
+
 function eh401(err: unknown): boolean {
   return isAxiosError(err) && err.response?.status === 401;
 }
@@ -100,11 +110,24 @@ async function enviarArquivos(idTecnico: number): Promise<string | null> {
       continue;
     }
 
+    // Integridade: o hash foi calculado na CAPTURA (fila). Arquivos enfileirados por uma versao antiga do app nao
+    // o tem; para eles calcula-se agora (protege so o transito) e persiste-se.
+    let sha256 = a.sha256;
+    if (!sha256) {
+      try {
+        sha256 = await sha256DoArquivo(a.caminho_local);
+        await atualizarArquivo(a.client_file_id, { sha256 });
+      } catch {
+        sha256 = null; // nao conseguiu ler para calcular: envia sem hash (o servidor grava o proprio)
+      }
+    }
+
     const form = new FormData();
     form.append("client_file_id", a.client_file_id);
     form.append("tipo_arquivo", a.tipo_arquivo);
     form.append("id_os", String(a.id_os));
     form.append("id_visita", String(a.id_visita));
+    if (sha256) form.append("sha256", sha256);
     anexarImagem(form, "file", { uri: a.caminho_local, mime: a.mime }, a.tipo_arquivo);
 
     try {
@@ -121,12 +144,23 @@ async function enviarArquivos(idTecnico: number): Promise<string | null> {
       });
     } catch (err) {
       if (eh401(err)) throw new ErroAutenticacao();
+      if (codigoDoErro(err) === "HASH_DIVERGENTE" && a.tentativas + 1 < MAX_TENTATIVAS_HASH_DIVERGENTE) {
+        // O que chegou ao servidor nao tem o hash da captura: pode ser corrupcao no transito. Tenta de novo (o arquivo
+        // continua na fila). Se persistir, cai no caso abaixo e fica REJEITADO com o motivo (nunca apagado).
+        await atualizarArquivo(a.client_file_id, {
+          codigo: "HASH_DIVERGENTE",
+          detalhe: "O arquivo chegou diferente do original; nova tentativa no próximo ciclo.",
+          somarTentativa: true,
+        });
+        falha = "Arquivo corrompido no envio; tentando novamente.";
+        continue;
+      }
       if (erroDefinitivo(err)) {
         // 400/403/404/409/413/422: o servidor recusou o arquivo em si. Fica registrado (rejeitado),
         // o evento que o referencia mostra o motivo e a fila segue.
         await atualizarArquivo(a.client_file_id, {
           status: "rejeitado",
-          codigo: `HTTP_${isAxiosError(err) ? err.response?.status : "ERRO"}`,
+          codigo: codigoDoErro(err) ?? `HTTP_${isAxiosError(err) ? err.response?.status : "ERRO"}`,
           detalhe: getErrorMessage(err, "O servidor recusou o arquivo."),
           somarTentativa: true,
         });

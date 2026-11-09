@@ -1,6 +1,6 @@
 // src/api/chamado.ts
 import api from "./api";
-import { anexarImagem, ArquivoImagem, UPLOAD_TIMEOUT_MS } from "./arquivo";
+import { anexarImagemComHash, ArquivoImagem, UPLOAD_TIMEOUT_MS } from "./arquivo";
 
 // Status oficiais (SDD secao 5). "Cancelado" nao e status: use is_cancelled.
 export type StatusOS =
@@ -113,7 +113,7 @@ export async function uploadFotoServico(
 ) {
   const formData = new FormData();
   formData.append("tipo", tipo);
-  anexarImagem(formData, "file", arquivo, `foto_${tipo}`);
+  await anexarImagemComHash(formData, "file", arquivo, `foto_${tipo}`);
 
   const res = await api.post(
     `/chamados/${chamadoId}/visitas/${visitaId}/servicos/${servicoId}/upload-foto`,

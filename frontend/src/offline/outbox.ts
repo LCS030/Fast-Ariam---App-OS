@@ -29,6 +29,8 @@ export interface NovoArquivo {
   tipo_arquivo: TipoArquivo;
   caminho_local: string;
   mime: "image/jpeg" | "image/png";
+  /** SHA-256 (hex) do arquivo ja copiado para a fila. */
+  sha256: string;
   id_os: number;
   id_visita: number;
 }
@@ -55,13 +57,14 @@ export async function gravarAcao(
     for (const a of arquivos) {
       await txn.runAsync(
         `INSERT INTO outbox_arquivos
-           (client_file_id, id_tecnico, tipo_arquivo, caminho_local, mime, id_os, id_visita, status, criado_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pendente', ?)`,
+           (client_file_id, id_tecnico, tipo_arquivo, caminho_local, mime, sha256, id_os, id_visita, status, criado_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendente', ?)`,
         a.client_file_id,
         idTecnico,
         a.tipo_arquivo,
         a.caminho_local,
         a.mime,
+        a.sha256,
         a.id_os,
         a.id_visita,
         agora
@@ -229,13 +232,14 @@ export async function atualizarArquivo(
     detalhe?: string | null;
     url?: string | null;
     caminho_local?: string | null;
+    sha256?: string | null;
     somarTentativa?: boolean;
   }
 ): Promise<void> {
   const db = await getDb();
   const sets: string[] = [];
   const params: (string | number | null)[] = [];
-  for (const k of ["status", "codigo", "detalhe", "url", "caminho_local"] as const) {
+  for (const k of ["status", "codigo", "detalhe", "url", "caminho_local", "sha256"] as const) {
     if (campos[k] !== undefined) {
       sets.push(`${k} = ?`);
       params.push(campos[k] as string | null);

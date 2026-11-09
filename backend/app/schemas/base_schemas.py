@@ -1,5 +1,6 @@
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 
@@ -20,6 +21,7 @@ class UserRole(str, Enum):
 
 
 class StatusChamado(str, Enum):
+    """Status da OS (SDD 4.3). `Aberto` e LEGADO: so leitura, nenhuma operacao nova pode grava-lo (TR-09)."""
     ABERTO = "Aberto"
     AGENDADO = "Agendado"
     EM_ATENDIMENTO = "Em Atendimento"
@@ -27,6 +29,44 @@ class StatusChamado(str, Enum):
     FINALIZADO = "Finalizado"
     PAUSADO = "Pausado"
     AGUARDANDO_REAGENDAMENTO = "Aguardando Reagendamento"
+
+
+class MotivoPausa(str, Enum):
+    """Lista oficial de motivos de pausa (PRD RN-29 / SDD seção 7). App, painel e backend usam a mesma lista."""
+    PECA_PENDENTE = "Peça pendente"
+    CLIENTE_AUSENTE = "Cliente ausente"
+    CONDICOES_INSEGURAS = "Condições inseguras"
+    AGUARDANDO_APROVACAO = "Aguardando aprovação"
+    OUTRO = "Outro"
+
+
+# Tolerância para relógio do aparelho adiantado em relação ao servidor (AR-05).
+TOLERANCIA_FUTURO = timedelta(minutes=5)
+
+
+class PayloadComHorario(BaseModel):
+    """
+    Base dos payloads de ações que carimbam horário (AR-05 / RN-24 / PR-30).
+    `ocorrido_em` e opcional: ISO-8601 COM fuso (ex.: 2026-10-29T14:02:11-03:00), vindo do aparelho.
+    Sem ele, o servidor usa o instante atual (UTC). Futuro além de 5 minutos e rejeitado.
+    """
+    ocorrido_em: Optional[datetime] = Field(
+        None, description="Momento real da ação no aparelho (ISO-8601 com fuso). Opcional.")
+
+    @field_validator("ocorrido_em")
+    @classmethod
+    def _validar_ocorrido_em(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v is None:
+            return v
+        if v.tzinfo is None or v.utcoffset() is None:
+            raise ValueError("ocorrido_em deve incluir o fuso horário (ex.: 2026-10-29T14:02:11-03:00).")
+        adiantamento = v - datetime.now(timezone.utc)
+        if adiantamento > TOLERANCIA_FUTURO:
+            minutos = int(adiantamento.total_seconds() // 60)
+            raise ValueError(
+                f"ocorrido_em está {minutos} minutos no futuro (tolerância: 5 minutos). "
+                "Verifique o relógio e o fuso do aparelho e tente novamente.")
+        return v
 
 
 class TipoDefeitoPrincipal(str, Enum):
@@ -100,33 +140,31 @@ class SubDefeitoEstrutura(str, Enum):
 # noinspection PyArgumentList
 class ServicoEquipamento(BaseModel):
     """Representa um trabalho realizado em um único equipamento durante uma visita."""
-    id_servico: int = Field(..., description="ID único do serviço realizaado no equipamento")
-    numero_serie_atendido: str = Field(..., description="Numero de série do equipamento atendido.")
-    defeitos_principais: List[TipoDefeitoPrincipal] = Field(default_factory=list,
-                                                            description="Lista de categorias principais do defeito.")
+    id_servico: int = Field(..., description="ID único do serviço realizado no equipamento")
+    # v0.5: o equipamento vem da OS. `modelo` e `numero_serie` são SOMENTE LEITURA (vêm do vínculo da OS; em serviços
+    # legados, do texto digitado na época). `numero_serie_atendido`/`nome_equipamento` são colunas legadas.
+    id_os_equipamento: Optional[int] = Field(None, description="Equipamento da OS ao qual o serviço se refere.")
+    modelo: Optional[str] = Field(None, description="Modelo do equipamento (somente leitura).")
+    numero_serie: Optional[str] = Field(None, description="Número de série do equipamento (somente leitura).")
+    conserto_salvo_em: Optional[datetime] = Field(None, description="Quando o técnico salvou o conserto (RN-47).")
+    is_legado: bool = Field(False, description="True em serviços anteriores à v0.5, sem vínculo com a OS.")
+    numero_serie_atendido: Optional[str] = Field(None, description="LEGADO: série digitada pelo técnico antes da v0.5.")
+    nome_equipamento: Optional[str] = Field(None, description="LEGADO: nome digitado pelo técnico antes da v0.5.")
+    # Resposta tolerante: listas de texto (os rótulos válidos são validados na ENTRADA, schemas/servico_equipamento.py).
+    # Assim um valor legado/inesperado no banco nunca derruba a leitura da OS com 500.
+    defeitos_principais: List[str] = Field(default_factory=list, description="Categorias principais do defeito.")
     defeito_outros_descricao: Optional[str] = Field(None,
                                                     description="Descrição se 'Outros' for selecionado em defeitos_principais")
-    sub_defeitos_refrigeracao: List[SubDefeitoRefrigeracao] = Field(default_factory=list,
-                                                                    description="Sub-defeitos de Refrigeração")
-    sub_defeitos_compressor: List[SubDefeitoCompressor] = Field(default_factory=list,
-                                                                description="Detalhes do defeito de Compressor")
-    sub_defeitos_vazamento: List[SubDefeitoVazamento] = Field(default_factory=list,
-                                                              description="Detalhes do defeito de Vazamento")
+    sub_defeitos_refrigeracao: List[str] = Field(default_factory=list, description="Sub-defeitos de Refrigeração")
+    sub_defeitos_compressor: List[str] = Field(default_factory=list, description="Detalhes do defeito de Compressor")
+    sub_defeitos_vazamento: List[str] = Field(default_factory=list, description="Detalhes do defeito de Vazamento")
     vazamento_ponto_descricao: Optional[str] = Field(None,
                                                      description="Descrição por extenso dos pontos de vazamento")
-    sub_defeitos_outros: List[SubDefeitoOutros] = Field(default_factory=list,
-                                                        description="Detalhes de 'Outros' em Refrigeração")
-    sub_defeitos_iluminacao: List[SubDefeitoIluminacao] = Field(default_factory=list,
-                                                                description="Detalhes do defeito de Iluminação")
-    sub_defeitos_estrutura: List[SubDefeitoEstrutura] = Field(default_factory=list,
-                                                              description="Detalhes do defeito de Estrutura")
+    sub_defeitos_outros: List[str] = Field(default_factory=list, description="Detalhes de 'Outros' em Refrigeração")
+    sub_defeitos_iluminacao: List[str] = Field(default_factory=list, description="Detalhes do defeito de Iluminação")
+    sub_defeitos_estrutura: List[str] = Field(default_factory=list, description="Detalhes do defeito de Estrutura")
 
-    materiais_utilizados: List[Material] = Field(
-        example=[
-            {"nome": "Filtro Secador XYZ", "quantidade": 1, "valor": 85.00},
-            {"nome": "Gás R-134a", "quantidade": 2, "valor": 50.00}
-        ]
-    )
+    materiais_utilizados: List[Material] = Field(default_factory=list)
     fotos_defeito: List[str] = []
     fotos_conserto: List[str] = []
 

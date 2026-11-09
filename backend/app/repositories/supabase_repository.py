@@ -1,23 +1,22 @@
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-from typing import List, Optional, Dict, Any
-from datetime import date
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, configure_mappers, joinedload, selectinload
+from typing import List, Optional
+from datetime import datetime, timezone
 from app.models.tecnico import Tecnico
 from app.models.cliente import Cliente
 from app.models.chamado import OrdemServico
 from app.models.visita import Visita
 from app.models.servico_equipamento import ServicoEquipamento
 from app.models.material import Material
-from app.schemas.base_schemas import StatusChamado
-from app.schemas.tecnico import TecnicoCreate, TecnicoUpdate
-from app.schemas.cliente import ClienteCreate, ClienteUpdate
-from app.schemas.chamado import ChamadoCreate, ChamadoUpdate
-from app.schemas.visita import VisitaCreate, VisitaUpdate
+from app.schemas.tecnico import TecnicoUpdate
+from app.schemas.cliente import ClienteUpdate
 from app.repositories.in_memory_repository import deep_update
 from app.models.comprovante import Comprovante
 from app.models.servico_defeito import ServicoDefeito
 from app.models.servico_foto import ServicoFoto
 from app.models.pausa import Pausa
+from app.models.equipamento_modelo import EquipamentoModelo
+from app.models.os_equipamento import OsEquipamento
 
 
 class SQLRepository:
@@ -121,264 +120,353 @@ class SQLRepository:
         self.db.commit()
         return True
 
+    # ------------------------------------------------------------------------------------------------------------
+    # Controle de transação. As operações de domínio (services) usam commit=False e confirmam UMA vez no fim, para
+    # que ações que tocam várias entidades (ex.: cancelar OS + encerrar pausas + log) sejam atômicas.
+    # ------------------------------------------------------------------------------------------------------------
+    def add(self, obj) -> None:
+        self.db.add(obj)
+
+    def flush(self) -> None:
+        self.db.flush()
+
+    def commit(self) -> None:
+        self.db.commit()
+
+    def rollback(self) -> None:
+        self.db.rollback()
+
+    def _finish(self, commit: bool) -> None:
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
+
+    # ------------------------------------------------------------------------------------------------------------
+    # Chamados (OS)
+    # ------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def _chamado_options():
+        """Carrega a árvore usada pelas respostas de uma vez (evita N+1 na serialização)."""
+        configure_mappers()  # `Visita.pausas` é um backref: só existe depois da configuração dos mappers
+        visitas = selectinload(OrdemServico.visitas)
+        servicos = visitas.selectinload(Visita.servicos_realizados)
+        return (
+            visitas.selectinload(Visita.comprovantes),
+            visitas.selectinload(Visita.pausas),
+            servicos.selectinload(ServicoEquipamento.materiais_utilizados),
+            servicos.selectinload(ServicoEquipamento.defeitos),
+            servicos.selectinload(ServicoEquipamento.fotos),
+            servicos.selectinload(ServicoEquipamento.equipamento).selectinload(OsEquipamento.equipamento_modelo),
+            selectinload(OrdemServico.equipamentos).selectinload(OsEquipamento.equipamento_modelo),
+            joinedload(OrdemServico.cliente),
+        )
+
     def get_chamado_by_id(self, chamado_id: int) -> Optional[OrdemServico]:
-        from sqlalchemy.orm import joinedload
+        return (self.db.query(OrdemServico)
+                .options(*self._chamado_options())
+                .filter(OrdemServico.id_os == chamado_id)
+                .first())
 
-        return self.db.query(OrdemServico).options(
-            joinedload(OrdemServico.visitas)
-            .joinedload(Visita.servicos_realizados)
-            .joinedload(ServicoEquipamento.materiais_utilizados),
-            joinedload(OrdemServico.cliente),
-            joinedload(OrdemServico.tecnico)
-        ).filter(OrdemServico.id_os == chamado_id).first()
+    @staticmethod
+    def query_chamado_para_update(chamado_id: int):
+        """SELECT ... FOR UPDATE da OS (D11): serializa finalização/cancelamento concorrentes (no-op em SQLite)."""
+        return (select(OrdemServico).where(OrdemServico.id_os == chamado_id)
+                .with_for_update().execution_options(populate_existing=True))
 
-    def get_chamados(self) -> list[type[OrdemServico]]:
-        from sqlalchemy.orm import joinedload
+    def lock_chamado(self, chamado_id: int) -> Optional[OrdemServico]:
+        """Trava a linha da OS até o fim da transação e devolve o estado ATUAL (relê o que a sessão tinha em cache)."""
+        return self.db.execute(self.query_chamado_para_update(chamado_id)).scalar_one_or_none()
 
-        return self.db.query(OrdemServico).options(
-            joinedload(OrdemServico.visitas)
-            .joinedload(Visita.servicos_realizados)
-            .joinedload(ServicoEquipamento.materiais_utilizados),
-            joinedload(OrdemServico.cliente),
-            joinedload(OrdemServico.tecnico)
-        ).all()
+    def get_chamados(self, tecnico_id: Optional[int] = None,
+                     is_cancelled: Optional[bool] = None) -> List[OrdemServico]:
+        """Lista OS filtrando no SQL (não em Python) e com carga antecipada das relações."""
+        query = self.db.query(OrdemServico).options(*self._chamado_options())
+        if tecnico_id is not None:
+            query = query.filter(OrdemServico.id_tecnico_atribuido == tecnico_id)
+        if is_cancelled is not None:
+            query = query.filter(OrdemServico.is_cancelled == is_cancelled)
+        return query.order_by(OrdemServico.id_os).all()
 
-    def create_chamado(self, chamado_data: dict) -> OrdemServico:
+    def create_chamado(self, chamado_data: dict, commit: bool = True) -> OrdemServico:
         db_chamado = OrdemServico(**chamado_data)
         self.db.add(db_chamado)
-        self.db.commit()
-        self.db.refresh(db_chamado)
+        self._finish(commit)
+        if commit:
+            self.db.refresh(db_chamado)
         return db_chamado
 
-    def update_chamado(self, chamado_id: int, update_data: dict) -> Optional[OrdemServico]:
-        rows_updated = self.db.query(OrdemServico).filter(OrdemServico.id_os == chamado_id).update(update_data)
-        if rows_updated == 0:
+    def update_chamado(self, chamado_id: int, update_data: dict, commit: bool = True) -> Optional[OrdemServico]:
+        """Atualiza pelo ORM (não por UPDATE em massa): mantém a sessão coerente e aceita enum ou string."""
+        db_chamado = self.db.get(OrdemServico, chamado_id)
+        if db_chamado is None:
             return None
-        self.db.commit()
-        return self.get_chamado_by_id(chamado_id)
+        for key, value in update_data.items():
+            setattr(db_chamado, key, value)
+        self._finish(commit)
+        return db_chamado
 
-    def delete_chamado(self, chamado_id: int) -> bool:
-        db_chamado = self.get_chamado_by_id(chamado_id)
-        if not db_chamado:
-            return False
-        db_chamado.is_cancelled = True
-        self.db.commit()
-        return True
-
-    def create_servico_equipamento(self, visita_id: int, servico_data: dict) -> ServicoEquipamento:
-        materiais_data = servico_data.pop('materiais_utilizados', [])
+    # ------------------------------------------------------------------------------------------------------------
+    # Serviços por equipamento
+    # ------------------------------------------------------------------------------------------------------------
+    def create_servico_equipamento(self, visita_id: int, servico_data: dict, commit: bool = True) -> ServicoEquipamento:
+        servico_data = dict(servico_data)
+        materiais_data = servico_data.pop('materiais_utilizados', None) or []
 
         defeitos_mapping = {
-            'principal': servico_data.pop('defeitos_principais', []),
-            'refrigeracao': servico_data.pop('sub_defeitos_refrigeracao', []),
-            'compressor': servico_data.pop('sub_defeitos_compressor', []),
-            'vazamento': servico_data.pop('sub_defeitos_vazamento', []),
-            'outros': servico_data.pop('sub_defeitos_outros', []),
-            'iluminacao': servico_data.pop('sub_defeitos_iluminacao', []),
-            'estrutura': servico_data.pop('sub_defeitos_estrutura', [])
+            'principal': servico_data.pop('defeitos_principais', None) or [],
+            'refrigeracao': servico_data.pop('sub_defeitos_refrigeracao', None) or [],
+            'compressor': servico_data.pop('sub_defeitos_compressor', None) or [],
+            'vazamento': servico_data.pop('sub_defeitos_vazamento', None) or [],
+            'outros': servico_data.pop('sub_defeitos_outros', None) or [],
+            'iluminacao': servico_data.pop('sub_defeitos_iluminacao', None) or [],
+            'estrutura': servico_data.pop('sub_defeitos_estrutura', None) or [],
         }
-
-        # 🔥 A CORREÇÃO ESTÁ AQUI: Remove as propriedades somente leitura antes de instanciar!
+        # Propriedades somente leitura do model: não são colunas.
         servico_data.pop('fotos_defeito', None)
         servico_data.pop('fotos_conserto', None)
+        servico_data.pop('id_servico', None)
 
         servico = ServicoEquipamento(**servico_data, id_visita=visita_id)
 
         for m in materiais_data:
-            servico.materiais_utilizados.append(Material(**m))
+            servico.materiais_utilizados.append(Material(**dict(m)))
 
         for tipo, lista in defeitos_mapping.items():
             for d in lista:
-                servico.defeitos.append(ServicoDefeito(tipo=tipo, defeito=d))
+                servico.defeitos.append(ServicoDefeito(tipo=tipo, defeito=str(getattr(d, "value", d))))
 
         self.db.add(servico)
-        self.db.commit()
-        self.db.refresh(servico)
+        self._finish(commit)
+        if commit:
+            self.db.refresh(servico)
         return servico
 
-    def update_servico_equipamento(self, servico_id: int, update_data: dict):
-        materiais_data = update_data.pop('materiais_utilizados', None)
-
-        # 🔥 A CORREÇÃO AQUI TAMBÉM:
-        update_data.pop('fotos_defeito', None)
-        update_data.pop('fotos_conserto', None)
-
-        defeitos_keys = ['defeitos_principais', 'sub_defeitos_refrigeracao', 'sub_defeitos_compressor',
-                         'sub_defeitos_vazamento', 'sub_defeitos_outros', 'sub_defeitos_iluminacao',
-                         'sub_defeitos_estrutura']
-
-        defeitos_updates = {}
-        for key in defeitos_keys:
-            if key in update_data:
-                tipo = key.replace('sub_defeitos_', '').replace('defeitos_principais', 'principal')
-                defeitos_updates[tipo] = update_data.pop(key)
-
-        rows = self.db.query(ServicoEquipamento).filter(ServicoEquipamento.id_servico == servico_id).update(update_data)
-        if rows == 0:
-            return None
-
-        if materiais_data is not None:
-            self.db.query(Material).filter(Material.id_servico == servico_id).delete()
-            for m in materiais_data:
-                self.db.add(Material(id_servico=servico_id, **m))
-
-        if defeitos_updates:
-            for tipo, lista in defeitos_updates.items():
-                self.db.query(ServicoDefeito).filter(ServicoDefeito.id_servico == servico_id,
-                                                     ServicoDefeito.tipo == tipo).delete()
-                for d in lista:
-                    self.db.add(ServicoDefeito(id_servico=servico_id, tipo=tipo, defeito=d))
-
-        self.db.commit()
+    def get_servico_by_id(self, servico_id: int) -> Optional[ServicoEquipamento]:
         return self.db.query(ServicoEquipamento).filter(ServicoEquipamento.id_servico == servico_id).first()
 
-    def create_visita(self, chamado_id: int, visita_data: dict) -> Visita:
-        servicos_data = visita_data.pop('servicos_realizados', [])
+    def update_servico_equipamento(self, servico_id: int, update_data: dict, commit: bool = True):
+        servico = self.get_servico_by_id(servico_id)
+        if servico is None:
+            return None
+        update_data = dict(update_data)
+        materiais_data = update_data.pop('materiais_utilizados', None)
+        update_data.pop('fotos_defeito', None)
+        update_data.pop('fotos_conserto', None)
+        update_data.pop('id_servico', None)
 
+        defeitos_keys = {
+            'defeitos_principais': 'principal',
+            'sub_defeitos_refrigeracao': 'refrigeracao',
+            'sub_defeitos_compressor': 'compressor',
+            'sub_defeitos_vazamento': 'vazamento',
+            'sub_defeitos_outros': 'outros',
+            'sub_defeitos_iluminacao': 'iluminacao',
+            'sub_defeitos_estrutura': 'estrutura',
+        }
+        defeitos_updates = {}
+        for key, tipo in defeitos_keys.items():
+            if key in update_data:
+                defeitos_updates[tipo] = update_data.pop(key) or []
+
+        for key, value in update_data.items():
+            if key in ('defeito_outros_descricao', 'vazamento_ponto_descricao'):  # série/nome: legado, nunca editáveis
+                setattr(servico, key, value)
+
+        if materiais_data is not None:
+            servico.materiais_utilizados.clear()
+            for m in materiais_data:
+                servico.materiais_utilizados.append(Material(**dict(m)))
+
+        for tipo, lista in defeitos_updates.items():
+            for d in [d for d in servico.defeitos if d.tipo == tipo]:
+                servico.defeitos.remove(d)
+            for d in lista:
+                servico.defeitos.append(ServicoDefeito(tipo=tipo, defeito=str(getattr(d, "value", d))))
+
+        self._finish(commit)
+        return servico
+
+    def get_servicos_by_visita(self, visita_id: int, atualizar: bool = False) -> List[ServicoEquipamento]:
+        """
+        Serviços (com materiais, defeitos, fotos e equipamento da OS) de uma visita. `atualizar=True` relê tudo do
+        banco, ignorando o que a sessão já tinha em cache (usado nas travas de início/finalização, TR-12/TR-13).
+        """
+        query = (self.db.query(ServicoEquipamento)
+                 .options(selectinload(ServicoEquipamento.materiais_utilizados),
+                          selectinload(ServicoEquipamento.defeitos),
+                          selectinload(ServicoEquipamento.fotos),
+                          selectinload(ServicoEquipamento.equipamento).selectinload(OsEquipamento.equipamento_modelo))
+                 .filter(ServicoEquipamento.id_visita == visita_id)
+                 .order_by(ServicoEquipamento.id_servico))
+        if atualizar:
+            query = query.populate_existing()
+        return query.all()
+
+    def get_servicos_do_equipamento(self, os_equipamento_id: int) -> List[ServicoEquipamento]:
+        """Registros de serviço do equipamento da OS em TODAS as visitas (inclui histórico)."""
+        return (self.db.query(ServicoEquipamento)
+                .options(selectinload(ServicoEquipamento.materiais_utilizados),
+                         selectinload(ServicoEquipamento.defeitos),
+                         selectinload(ServicoEquipamento.fotos))
+                .filter(ServicoEquipamento.id_os_equipamento == os_equipamento_id)
+                .order_by(ServicoEquipamento.id_servico)
+                .all())
+
+    def delete_servico(self, servico: ServicoEquipamento, commit: bool = False) -> None:
+        self.db.delete(servico)
+        self._finish(commit)
+
+    def get_foto_servico(self, foto_id: int) -> Optional[ServicoFoto]:
+        return self.db.query(ServicoFoto).filter(ServicoFoto.id_foto == foto_id).first()
+
+    def delete_foto_servico(self, foto: ServicoFoto, commit: bool = False) -> None:
+        """Remove só o REGISTRO da foto; o arquivo não é apagado do armazenamento (sem rotina de purga, RNF-02)."""
+        self.db.delete(foto)
+        self._finish(commit)
+
+    # ------------------------------------------------------------------------------------------------------------
+    # Catálogo de modelos e equipamentos da OS (v0.5)
+    # ------------------------------------------------------------------------------------------------------------
+    def get_modelo_by_id(self, modelo_id: int) -> Optional[EquipamentoModelo]:
+        return self.db.get(EquipamentoModelo, modelo_id)
+
+    def get_modelo_por_nome(self, nome: str) -> Optional[EquipamentoModelo]:
+        """Busca sem diferenciar maiúsculas (a unicidade do catálogo é case-insensitive)."""
+        return (self.db.query(EquipamentoModelo)
+                .filter(func.lower(EquipamentoModelo.modelo) == nome.strip().lower()).first())
+
+    def get_modelos(self, is_active: Optional[bool] = None) -> List[EquipamentoModelo]:
+        query = self.db.query(EquipamentoModelo)
+        if is_active is not None:
+            query = query.filter(EquipamentoModelo.is_active == is_active)
+        return query.order_by(func.lower(EquipamentoModelo.modelo)).all()
+
+    def create_modelo(self, nome: str, commit: bool = False) -> EquipamentoModelo:
+        modelo = EquipamentoModelo(modelo=nome.strip(), is_active=True)
+        self.db.add(modelo)
+        self._finish(commit)
+        return modelo
+
+    def get_os_equipamento(self, os_equipamento_id: int) -> Optional[OsEquipamento]:
+        return (self.db.query(OsEquipamento).options(selectinload(OsEquipamento.equipamento_modelo))
+                .filter(OsEquipamento.id_os_equipamento == os_equipamento_id).first())
+
+    def get_os_equipamentos(self, chamado_id: int) -> List[OsEquipamento]:
+        return (self.db.query(OsEquipamento).options(selectinload(OsEquipamento.equipamento_modelo))
+                .filter(OsEquipamento.id_os == chamado_id).order_by(OsEquipamento.id_os_equipamento).all())
+
+    def get_os_equipamento_por_serie(self, chamado_id: int, numero_serie: str) -> Optional[OsEquipamento]:
+        """Série já vinculada à OS (sem diferenciar maiúsculas)."""
+        return (self.db.query(OsEquipamento)
+                .filter(OsEquipamento.id_os == chamado_id,
+                        func.upper(OsEquipamento.numero_serie) == numero_serie.strip().upper()).first())
+
+    def add_os_equipamento(self, chamado_id: int, modelo_id: int, numero_serie: str,
+                           commit: bool = False) -> OsEquipamento:
+        equipamento = OsEquipamento(id_os=chamado_id, id_equipamento_modelo=modelo_id,
+                                    numero_serie=numero_serie.strip(), origem="admin")
+        self.db.add(equipamento)
+        self._finish(commit)
+        return equipamento
+
+    def delete_os_equipamento(self, equipamento: OsEquipamento, commit: bool = False) -> None:
+        self.db.delete(equipamento)
+        self._finish(commit)
+
+    def add_servico_foto(self, servico_id: int, tipo: str, url: str, commit: bool = True) -> ServicoFoto:
+        foto = ServicoFoto(id_servico=servico_id, tipo=tipo, url=url)
+        self.db.add(foto)
+        self._finish(commit)
+        if commit:
+            self.db.refresh(foto)
+        return foto
+
+    # ------------------------------------------------------------------------------------------------------------
+    # Visitas
+    # ------------------------------------------------------------------------------------------------------------
+    def create_visita(self, chamado_id: int, visita_data: dict, commit: bool = True) -> Visita:
         db_visita = Visita(**visita_data, id_os=chamado_id)
         self.db.add(db_visita)
-        self.db.flush()  # Retém na memória pra obter id
-
-        for servico_data in servicos_data:
-            self.create_servico_equipamento(db_visita.id_visita, servico_data)
-
-        self.db.commit()
-        self.db.refresh(db_visita)
+        self._finish(commit)
+        if commit:
+            self.db.refresh(db_visita)
         return db_visita
 
     def get_visita_by_id(self, visita_id: int) -> Optional[Visita]:
-        from sqlalchemy.orm import joinedload
-        return self.db.query(Visita).options(
-            joinedload(Visita.servicos_realizados)
-            .joinedload(ServicoEquipamento.materiais_utilizados)
-        ).filter(Visita.id_visita == visita_id).first()
+        configure_mappers()
+        return (self.db.query(Visita)
+                .options(selectinload(Visita.comprovantes),
+                         selectinload(Visita.pausas),
+                         selectinload(Visita.servicos_realizados).selectinload(ServicoEquipamento.materiais_utilizados),
+                         selectinload(Visita.servicos_realizados).selectinload(ServicoEquipamento.defeitos),
+                         selectinload(Visita.servicos_realizados).selectinload(ServicoEquipamento.fotos),
+                         selectinload(Visita.servicos_realizados).selectinload(ServicoEquipamento.equipamento)
+                         .selectinload(OsEquipamento.equipamento_modelo))
+                .filter(Visita.id_visita == visita_id)
+                .first())
 
-    def get_servicos_by_visita(self, visita_id: int) -> list[ServicoEquipamento]:
+    def get_visita_aberta(self, chamado_id: int) -> Optional[Visita]:
         """
-        Retorna todos os serviços associados a uma visita.
-        Usado pelos endpoints que listam serviços de uma visita.
+        Visita executável da OS: a MAIS RECENTE, desde que não finalizada; senão None.
+        Visitas anteriores não finalizadas são "abandonadas" (ex.: técnico desativado, RN-08a): ficam só como
+        histórico e nunca voltam a ser executáveis. Invariante: no máximo uma visita aberta executável por OS.
         """
-        return self.db.query(ServicoEquipamento).filter(ServicoEquipamento.id_visita == visita_id).all()
+        ultima = self.get_ultima_visita(chamado_id)
+        return ultima if ultima is not None and not ultima.servico_finalizado else None
 
-    def create_pausa(self, visita_id: int, pausa_data: dict, por_tecnico_id: Optional[int] = None) -> Pausa:
-        visita = self.get_visita_by_id(visita_id)
-        if not visita:
-            raise HTTPException(status_code=404, detail="Visita não encontrada")
+    def get_ultima_visita(self, chamado_id: int) -> Optional[Visita]:
+        return (self.db.query(Visita).filter(Visita.id_os == chamado_id)
+                .order_by(Visita.id_visita.desc()).first())
 
-        motivo = pausa_data.get("motivo")
-        descricao = pausa_data.get("descricao")
-
-        pausa = Pausa(visita_id=visita_id, motivo=motivo, descricao=descricao, por_tecnico_id=por_tecnico_id,
-                      is_ativa=True)
-        self.db.add(pausa)
-        # Atualiza status do chamado associado para PAUSADO
-        self.db.query(OrdemServico).filter(OrdemServico.id_os == visita.id_os).update({"status": StatusChamado.PAUSADO.value})
-        self.db.commit()
-        self.db.refresh(pausa)
-        return pausa
-
-    def get_pausas_by_visita(self, visita_id: int) -> list[Pausa]:
-        return self.db.query(Pausa).filter(Pausa.visita_id == visita_id).all()
-
-    def resolve_pausas_for_chamado(self, chamado_id: int) -> int:
-        """Marca todas as pausas ativas das visitas pertencentes a um chamado como inativas.
-        Retorna o número de registros alterados.
-        """
-        visitas = self.db.query(Visita).filter(Visita.id_os == chamado_id).all()
-        visita_ids = [v.id_visita for v in visitas]
-        if not visita_ids:
-            return 0
-        rows_updated = self.db.query(Pausa).filter(Pausa.visita_id.in_(visita_ids), Pausa.is_ativa == True).update({"is_ativa": False})
-        self.db.commit()
-        return rows_updated
-
-    def update_visita(self, visita_id: int, update_data: dict) -> Optional[Visita]:
-        update_data.pop('servicos_realizados', None)
-
-        # Intercepta arrays de comprovantes
-        pedagio_urls = update_data.pop('comprovante_pedagio_urls', None)
-        frete_urls = update_data.pop('comprovante_frete_urls', None)
-
-        rows_updated = self.db.query(Visita).filter(Visita.id_visita == visita_id).update(update_data)
-        if rows_updated == 0:
+    def update_visita(self, visita_id: int, update_data: dict, commit: bool = True) -> Optional[Visita]:
+        """Atualiza colunas da visita pelo ORM. Chaves que não são colunas (listas derivadas etc.) são ignoradas."""
+        visita = self.db.get(Visita, visita_id)
+        if visita is None:
             return None
-
-        if pedagio_urls is not None:
-            self.db.query(Comprovante).filter(Comprovante.id_visita == visita_id,
-                                              Comprovante.tipo == 'pedagio').delete()
-            for url in pedagio_urls:
-                self.db.add(Comprovante(id_visita=visita_id, tipo='pedagio', url=url))
-
-        if frete_urls is not None:
-            self.db.query(Comprovante).filter(Comprovante.id_visita == visita_id, Comprovante.tipo == 'frete').delete()
-            for url in frete_urls:
-                self.db.add(Comprovante(id_visita=visita_id, tipo='frete', url=url))
-
-        self.db.commit()
+        colunas = {c.key for c in Visita.__table__.columns}
+        for key, value in update_data.items():
+            if key in colunas and key != 'id_visita':
+                setattr(visita, key, value)
+        self._finish(commit)
         return self.get_visita_by_id(visita_id)
 
-    def update_visita_e_chamado(
-            self,
-            visita_id: int,
-            chamado_id: int,
-            visita_in: VisitaUpdate
-    ) -> Optional[Visita]:
-        """
-        Atualiza uma visita e, se necessário, o status do chamado pai, validando as regras de negócio para finalização.
-        Tudo em uma única transação.
-        """
-        try:
-            visita_db = self.get_visita_by_id(visita_id)
-            if not visita_db or visita_db.id_os != chamado_id:
-                return None
+    def add_comprovante(self, visita_id: int, tipo: str, url: str, commit: bool = True) -> Comprovante:
+        """Registra um comprovante ('pedagio' ou 'frete') na tabela `comprovante` (SDD 4.6)."""
+        comprovante = Comprovante(id_visita=visita_id, tipo=tipo, url=url)
+        self.db.add(comprovante)
+        self._finish(commit)
+        return comprovante
 
-            update_data = visita_in.dict(exclude_unset=True)
-            if not update_data:
-                return visita_db
+    # ------------------------------------------------------------------------------------------------------------
+    # Pausas
+    # ------------------------------------------------------------------------------------------------------------
+    def create_pausa(self, visita_id: int, pausa_data: dict, por_usuario_id: Optional[int] = None,
+                     por_papel: Optional[str] = None, commit: bool = True) -> Pausa:
+        """Cria a pausa. A mudança de status da OS é decidida pelo service (validador de transições)."""
+        pausa = Pausa(visita_id=visita_id, motivo=pausa_data.get("motivo"), descricao=pausa_data.get("descricao"),
+                      por_usuario_id=por_usuario_id, por_papel=por_papel, is_ativa=True)
+        if pausa_data.get("criado_em") is not None:
+            pausa.criado_em = pausa_data["criado_em"]
+        self.db.add(pausa)
+        self._finish(commit)
+        if commit:
+            self.db.refresh(pausa)
+        return pausa
 
-            for key, value in update_data.items():
-                if hasattr(visita_db, key):
-                    if key in ('comprovante_pedagio_urls', 'comprovante_frete_urls', 'servicos_realizados'):
-                        setattr(visita_db, key, value)
-                    else:
-                        setattr(visita_db, key, value)
-            dados_update_chamado = {}
-            if visita_db.servico_finalizado is True:
-                if visita_db.km_total > 0:
-                    if not visita_db.odometro_inicio_url or not visita_db.odometro_fim_url:
-                        raise HTTPException(status_code=400,
-                                            detail="Fotos do odômetro (início e fim) são obrigatórias se km_total > 0.")
-                if visita_db.valor_pedagio > 0:
-                    if not visita_db.comprovante_pedagio_urls:
-                        raise HTTPException(status_code=400,
-                                            detail="Comprovante(s) de pedágio são obrigatórios se valor_pedagio > 0.")
-                if visita_db.valor_frete_devolucao > 0:
-                    if not visita_db.comprovante_frete_urls:
-                        raise HTTPException(status_code=400,
-                                            detail="Comprovante(s) de frete são obrigatórios se valor_frete_devolucao > 0.")
+    def get_pausas_by_visita(self, visita_id: int) -> List[Pausa]:
+        return self.db.query(Pausa).filter(Pausa.visita_id == visita_id).order_by(Pausa.id_pausa).all()
 
-                dados_update_chamado = {"status": StatusChamado.FINALIZADO.value, "data_conclusao": date.today()}
-
-            elif visita_db.servico_finalizado is False:
-                pendencia = visita_db.pendencia
-                dados_update_chamado = {
-                    "status": StatusChamado.PENDENTE.value if pendencia else StatusChamado.EM_ATENDIMENTO.value,
-                    "data_conclusao": None
-                }
-
-            self.db.add(visita_db)
-
-            if dados_update_chamado:
-                self.db.query(OrdemServico).filter(OrdemServico.id_os == chamado_id).update(dados_update_chamado)
-
-            self.db.commit()
-
-        except HTTPException as e:
-            self.db.rollback()
-            raise e
-        except Exception as e:
-            self.db.rollback()
-            raise e
-
-        self.db.refresh(visita_db)
-        return visita_db
+    def resolve_pausas_for_chamado(self, chamado_id: int, quando: Optional[datetime] = None,
+                                   commit: bool = False) -> int:
+        """Encerra (is_ativa=false, encerrada_em) todas as pausas ativas das visitas da OS. Retorna quantas."""
+        quando = quando or datetime.now(timezone.utc)
+        pausas = (self.db.query(Pausa)
+                  .join(Visita, Visita.id_visita == Pausa.visita_id)
+                  .filter(Visita.id_os == chamado_id, Pausa.is_ativa.is_(True))
+                  .all())
+        for pausa in pausas:
+            pausa.is_ativa = False
+            pausa.encerrada_em = quando
+        self._finish(commit)
+        return len(pausas)

@@ -1,33 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, File, UploadFile, Form, Body
-from typing import List, Optional, Any, Dict
-from datetime import date, datetime
-import base64
-import uuid
-import os
-from app.models.material import Material
+"""
+Rotas de OS (chamados), visitas, serviços, fotos, custos (SDD seção 6.5 a 6.10).
+
+Camada HTTP fina: autorização por papel/atribuição, validação de entrada e delegação para os services
+(`chamado_service`, `visita_service`, `custo_service`, `file_service`), que concentram as regras de domínio.
+
+Removidos nesta versão (SDD v0.3):
+  * POST /{id}/concluir            -> a OS conclui ao finalizar a volta sem pausa (RF-14 / TR-02 / PR-04).
+  * DELETE /{id}                   -> substituído por POST /{id}/cancelar com motivo (PR-28).
+  * POST .../finalizar-dados       -> responde 410; os dados vão em finalizar-atendimento (PR-10).
+"""
+import logging
+from typing import List, Optional
+
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy.orm import Session
-from app.schemas.deslocamento import IniciarDeslocamentoPayload
+
 from app.core.security import get_current_active_user, require_admin_role, require_technician_role
 from app.db.database import get_db
 from app.repositories.supabase_repository import SQLRepository
-from app.repositories.in_memory_repository import deep_update
-from app.schemas.chamado import Chamado, ChamadoCreate, ChamadoUpdate, StatusChamado
-from app.schemas.visita import Visita, VisitaCreate, VisitaUpdate
+from app.schemas.chamado import (CancelarChamadoPayload, Chamado, ChamadoCreate, ChamadoUpdate, ReagendarPayload)
 from app.schemas.custo import CustoTotalResponse
-from app.services.custo_service import CustoService
-from app.services.file_service import save_upload_file, validate_image_resolution
-from app.schemas.foto import ServicoFotoResponse, UploadFotoResponse, ServicoFotoListResponse
-from app.models.servico_equipamento import ServicoEquipamento
+from app.schemas.deslocamento import FinalizarDeslocamentoPayload, IniciarDeslocamentoPayload
+from app.schemas.foto import ServicoFotoListResponse, ServicoFotoResponse, UploadFotoResponse
+from app.schemas.equipamento import OsEquipamento, OsEquipamentoCreate, OsEquipamentoUpdate
+from app.schemas.servico_equipamento import (SalvarConsertoPayload, ServicoEquipamento, ServicoEquipamentoUpdate)
+from app.schemas.visita import (FinalizarAtendimentoPayload, IniciarAtendimentoPayload, PausarPayload, Visita,
+                                VisitaCreate, VisitaUpdate)
+from app.services import (auditoria_service, chamado_service, custo_service, equipamento_service, file_service,
+                          servico_service, visita_service)
+from app.services.chamado_service import carregar_chamado, carregar_visita, exigir_status
+from app.schemas.base_schemas import StatusChamado
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-MULTI_FILE_FIELDS = ["comprovante_pedagio_urls", "comprovante_frete_urls"]
-
-ASSINATURA_DIR = "static/assinaturas"
-
-if not os.path.exists(ASSINATURA_DIR):
-    os.makedirs(ASSINATURA_DIR)
-
+# upload_file: campo da visita (coluna) alimentado pelo arquivo.
 SINGLE_FILE_FIELDS = [
     "odometro_inicio_url",
     "odometro_fim_url",
@@ -36,303 +44,207 @@ SINGLE_FILE_FIELDS = [
     "foto_inicio_volta_url",
     "foto_fim_volta_url",
 ]
+# upload_file: comprovantes viram registros na tabela `comprovante` (tipo -> 'pedagio' | 'frete').
+COMPROVANTE_FIELDS = {
+    "comprovante_pedagio_urls": "pedagio",
+    "comprovante_frete_urls": "frete",
+}
 
 
-def get_chamado_repository(db: Session = Depends(get_db)):
+def get_repo(db: Session = Depends(get_db)) -> SQLRepository:
     return SQLRepository(db=db)
 
 
-def get_cliente_repository(db: Session = Depends(get_db)):
-    return SQLRepository(db=db)
+def _chamado_response(chamado) -> Chamado:
+    resposta = Chamado.model_validate(chamado)
+    resposta.cliente_nome = chamado.cliente.razao_social if chamado.cliente else None
+    return resposta
 
 
-def get_tecnico_repository(db: Session = Depends(get_db)):
-    return SQLRepository(db=db)
+def _visita_response(repo: SQLRepository, visita_id: int) -> Visita:
+    return Visita.model_validate(repo.get_visita_by_id(visita_id))
 
 
-def servico_to_dict(servico):
-    return {
-        "id_servico": servico.id_servico,
-        "numero_serie_atendido": servico.numero_serie_atendido,
-        "nome_equipamento": servico.nome_equipamento,
-        "defeitos_principais": servico.defeitos_principais,
-        "defeito_outros_descricao": servico.defeito_outros_descricao,
-        "sub_defeitos_refrigeracao": servico.sub_defeitos_refrigeracao,
-        "sub_defeitos_compressor": servico.sub_defeitos_compressor,
-        "sub_defeitos_vazamento": servico.sub_defeitos_vazamento,
-        "vazamento_ponto_descricao": servico.vazamento_ponto_descricao,
-        "sub_defeitos_outros": servico.sub_defeitos_outros,
-        "sub_defeitos_iluminacao": servico.sub_defeitos_iluminacao,
-        "sub_defeitos_estrutura": servico.sub_defeitos_estrutura,
-        "materiais_utilizados": [
-            {
-                "id_material": m.id_material,
-                "nome": m.nome,
-                "quantidade": m.quantidade,
-                "valor": float(m.valor),
-            }
-            for m in servico.materiais_utilizados
-        ],
-        "fotos_defeito": servico.fotos_defeito,
-        "fotos_conserto": servico.fotos_conserto,
-    }
+def _exigir_os_nao_finalizada(chamado) -> None:
+    """M4: OS Finalizada é imutável (custo congelado): não aceita novos arquivos nem alteração de serviços/materiais."""
+    if chamado.status == StatusChamado.FINALIZADO:
+        raise HTTPException(status_code=409,
+                            detail="OS 'Finalizado' não aceita novos arquivos nem alterações de serviço.")
 
 
-from app.models.servico_foto import ServicoFoto
+def _registrar_upload(repo: SQLRepository, chamado, usuario: dict, **payload) -> None:
+    """Registra o upload em log_acao (mesma transação do commit). Sem PII: só ids e o campo de destino."""
+    auditoria_service.registrar_acao(repo.db, id_os=chamado.id_os, usuario=usuario,
+                                     acao=auditoria_service.UPLOAD_ARQUIVO, payload=payload)
 
 
-@router.post("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/upload-foto", response_model=UploadFotoResponse)
-def upload_foto_servico(
-        chamado_id: int,
-        visita_id: int,
-        servico_id: int,
-        tipo: str = Form(..., description="'defeito' ou 'conserto'"),
-        file: UploadFile = File(...),
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
-):
-    if tipo not in ["defeito", "conserto"]:
-        raise HTTPException(status_code=400, detail="O tipo da foto deve ser 'defeito' ou 'conserto'.")
-
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado.")
-
-    if chamado.id_tecnico_atribuido != current_user["user_id"]:
-        raise HTTPException(status_code=403, detail="Acesso negado.")
-
-    # Validar resolução mínima da imagem (720p)
-    validate_image_resolution(file)
-
-    prefix = f"servico_{servico_id}_foto_{tipo}"
-    file_url = save_upload_file(file, prefix)
-
-    foto_db = ServicoFoto(id_servico=servico_id, tipo=tipo, url=file_url)
-    repo.db.add(foto_db)
-    repo.db.commit()
-    repo.db.refresh(foto_db)
-
-    return UploadFotoResponse(status="ok", url=file_url, tipo=tipo, id_foto=foto_db.id_foto)
+def _salvar_ou_limpar(repo: SQLRepository, url: Optional[str]):
+    """Executa commit; se falhar, remove o arquivo recém-gravado para não deixar órfão."""
+    try:
+        repo.commit()
+    except Exception:
+        repo.rollback()
+        file_service.remover_arquivo_por_url(url)
+        raise
 
 
-@router.get("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/fotos", response_model=ServicoFotoListResponse)
-def get_fotos_servico(
-        chamado_id: int,
-        visita_id: int,
-        servico_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(get_current_active_user)
-):
-    """
-    Retorna todas as fotos (defeito e conserto) de um serviço.
-    Técnicos veem apenas suas próprias OS, admins veem todas.
-    """
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado.")
-
-    user_role = current_user.get("role")
-    if user_role != "admin" and chamado.id_tecnico_atribuido != current_user["user_id"]:
-        raise HTTPException(status_code=403, detail="Acesso negado.")
-
-    # Buscar o serviço
-    servico = repo.db.query(ServicoEquipamento).filter(
-        ServicoEquipamento.id_servico == servico_id,
-        ServicoEquipamento.id_visita == visita_id
-    ).first()
-
-    if not servico:
-        raise HTTPException(status_code=404, detail="Serviço não encontrado.")
-
-    fotos_defeito = [
-        ServicoFotoResponse.model_validate(f) 
-        for f in servico.fotos if f.tipo == "defeito"
-    ]
-    fotos_conserto = [
-        ServicoFotoResponse.model_validate(f) 
-        for f in servico.fotos if f.tipo == "conserto"
-    ]
-
-    return ServicoFotoListResponse(fotos_defeito=fotos_defeito, fotos_conserto=fotos_conserto)
-
+# =====================================================================================================================
+# OS: criar / listar / ler / atualizar / cancelar / reagendar
+# =====================================================================================================================
 
 @router.post("/", response_model=Chamado, status_code=201)
 def create_chamado(
         chamado_in: ChamadoCreate,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        cliente_repo: SQLRepository = Depends(get_cliente_repository),
-        _admin_user: dict = Depends(require_admin_role)
+        repo: SQLRepository = Depends(get_repo),
+        admin_user: dict = Depends(require_admin_role),
 ):
-    cliente_db = cliente_repo.get_cliente_by_id(chamado_in.id_cliente)
-    if not cliente_db or not cliente_db.is_active:
-        raise HTTPException(status_code=404,
-                            detail=f"Cliente com id {chamado_in.id_cliente} não encontrado ou inativo.")
-
-    chamado_data = chamado_in.model_dump()
-    chamado_data['data_abertura'] = date.today()
-    chamado_data['is_cancelled'] = False
-
-    if chamado_data.get('id_tecnico_atribuido') is not None:
-        chamado_data['status'] = StatusChamado.AGENDADO
-    else:
-        chamado_data['status'] = StatusChamado.ABERTO
-
-    chamado_criado_db = repo.create_chamado(chamado_data)
-    return chamado_criado_db
+    """Cria a OS. Sem técnico -> `Pendente`; com técnico ativo -> `Agendado` (RN-10 / T-26)."""
+    chamado = chamado_service.criar_chamado(repo, chamado_in.model_dump(), admin_user)
+    return _chamado_response(chamado)
 
 
 @router.get("/", response_model=List[Chamado])
 def get_todos_chamados(
-        repo: SQLRepository = Depends(get_chamado_repository),
+        repo: SQLRepository = Depends(get_repo),
         is_cancelled: Optional[bool] = Query(None, description="Filtra chamados pelo status de cancelamento"),
-        current_user: dict = Depends(get_current_active_user)
+        current_user: dict = Depends(get_current_active_user),
 ):
-    chamados_list_db = repo.get_chamados()
-    response_list = []
-    user_id = current_user.get("user_id")
-    user_role = current_user.get("role")
-
-    for chamado_db in chamados_list_db:
-        if is_cancelled is not None and chamado_db.is_cancelled != is_cancelled:
-            continue
-
-        if user_role == "tecnico" and chamado_db.id_tecnico_atribuido != user_id:
-            continue
-
-        cliente = repo.get_cliente_by_id(chamado_db.id_cliente)
-        cliente_nome = cliente.razao_social if cliente else None
-
-        chamado_dict = Chamado.model_validate(chamado_db).model_dump()
-        chamado_dict["cliente_nome"] = cliente_nome
-        response_list.append(chamado_dict)
-
-    return response_list
+    """Admin: todas as OS. Técnico: somente as suas, nunca as canceladas (RN-12)."""
+    if current_user.get("role") == "tecnico":
+        chamados = repo.get_chamados(tecnico_id=current_user["user_id"], is_cancelled=False)
+    else:
+        chamados = repo.get_chamados(is_cancelled=is_cancelled)
+    return [_chamado_response(c) for c in chamados]
 
 
 @router.get("/{chamado_id}", response_model=Chamado)
 def get_chamado_por_id(
         chamado_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(get_current_active_user)
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
 ):
-    chamado_db = repo.get_chamado_by_id(chamado_id)
-    if not chamado_db or chamado_db.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado.")
-
-    # Permissão: técnico só acessa seus próprios chamados
-    user_id = current_user.get("user_id")
-    role = current_user.get("role")
-    if role == "tecnico" and chamado_db.id_tecnico_atribuido != user_id:
-        raise HTTPException(status_code=403, detail="Acesso negado a este chamado.")
-
-    # pega o cliente
-    cliente = repo.get_cliente_by_id(chamado_db.id_cliente)
-    cliente_nome = cliente.razao_social if cliente else None
-
-    chamado_dict = Chamado.model_validate(chamado_db).model_dump()
-    chamado_dict["cliente_nome"] = cliente_nome
-
-    return chamado_dict
+    return _chamado_response(carregar_chamado(repo, chamado_id, current_user))
 
 
 @router.patch("/{chamado_id}", response_model=Chamado)
 def update_chamado(
         chamado_id: int,
         chamado_in: ChamadoUpdate,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        tecnico_repo: SQLRepository = Depends(get_tecnico_repository),
+        repo: SQLRepository = Depends(get_repo),
         current_user: dict = Depends(get_current_active_user),
 ):
+    """
+    PATCH administrativo (atribuir técnico e campos cadastrais). NUNCA grava `Finalizado` (T-04) e o técnico não
+    escolhe status por PATCH: usa as ações do fluxo da visita.
+    """
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Técnicos não podem alterar a OS por PATCH; use as ações do fluxo da visita.")
+
     update_data = chamado_in.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="Nenhum dado para atualizar foi fornecido.")
 
-    user_id = current_user.get("user_id")
-    user_role = current_user.get("role")
-
-    if user_role == "tecnico":
-        chamado_db = repo.get_chamado_by_id(chamado_id)
-        if not chamado_db or chamado_db.id_tecnico_atribuido != user_id:
-            raise HTTPException(status_code=403, detail="Acesso negado a este chamado.")
-
-        allowed_fields = {"status"}
-        for field in update_data.keys():
-            if field not in allowed_fields:
-                raise HTTPException(status_code=403, detail=f"Técnicos não podem atualizar o campo '{field}'.")
-
-    if user_role == "admin":
-        if 'id_tecnico_atribuido' in update_data:
-            novo_tecnico_id = update_data['id_tecnico_atribuido']
-            if novo_tecnico_id is not None:
-                tecnico_db = tecnico_repo.get_tecnico_by_id(novo_tecnico_id)
-                if not tecnico_db or not tecnico_db.is_active:
-                    raise HTTPException(status_code=404,
-                                        detail=f"Técnico com id {novo_tecnico_id} não encontrado ou inativo.")
-                if 'status' not in update_data:
-                    update_data['status'] = StatusChamado.AGENDADO
-
-    novo_status = update_data.get("status")
-    if novo_status:
-        if novo_status == StatusChamado.FINALIZADO:
-            if user_role != "admin":
-                raise HTTPException(status_code=403,
-                                    detail="Técnicos devem finalizar o chamado através da atualização da visita.")
-            update_data['data_conclusao'] = date.today()
-        elif novo_status != StatusChamado.FINALIZADO:
-            update_data['data_conclusao'] = None
-
-    updated_chamado = repo.update_chamado(chamado_id, update_data)
-    if updated_chamado is None:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado.")
-    return updated_chamado
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    atualizado = chamado_service.atualizar_chamado_admin(repo, chamado, update_data, current_user)
+    return _chamado_response(repo.get_chamado_by_id(atualizado.id_os))
 
 
-@router.delete("/{chamado_id}", status_code=204)
-def delete_chamado(
+@router.post("/{chamado_id}/cancelar", response_model=Chamado)
+def cancelar_chamado(
         chamado_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        _admin_user: dict = Depends(require_admin_role)
+        payload: CancelarChamadoPayload,
+        repo: SQLRepository = Depends(get_repo),
+        admin_user: dict = Depends(require_admin_role),
 ):
-    success = repo.delete_chamado(chamado_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado")
-    return Response(status_code=204)
+    """Cancela a OS com motivo obrigatório (PR-28 / RF-11). Finalizada ou já cancelada -> 409."""
+    chamado = carregar_chamado(repo, chamado_id, admin_user, permitir_cancelado=True)
+    return _chamado_response(chamado_service.cancelar_chamado(repo, chamado, payload.motivo, admin_user))
 
+
+@router.post("/{chamado_id}/reagendar", response_model=Visita, status_code=201)
+def reagendar_chamado(
+        chamado_id: int,
+        payload: ReagendarPayload,
+        response: Response,
+        repo: SQLRepository = Depends(get_repo),
+        admin_user: dict = Depends(require_admin_role),
+):
+    """
+    Reagenda a OS (admin). `Aguardando Reagendamento` -> nova visita (201), pausa encerrada, OS `Agendado`.
+    `Agendado` com ida não iniciada -> altera a data da visita existente (200). Demais status -> 409.
+    """
+    chamado = carregar_chamado(repo, chamado_id, admin_user)
+    visita, criada = chamado_service.reagendar_chamado(repo, chamado, payload.data_visita, admin_user)
+    if not criada:
+        response.status_code = 200
+    return Visita.model_validate(visita)
+
+
+@router.get("/{chamado_id}/custos", response_model=CustoTotalResponse)
+def get_custos_do_chamado(
+        chamado_id: int,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
+):
+    """OS Finalizada: devolve o snapshot imutável de `custo_os`. Demais: cálculo atual com os valores globais."""
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    return custo_service.obter_custo_da_os(repo.db, chamado)
+
+
+@router.post("/{chamado_id}/iniciar-atendimento", response_model=Chamado)
+def tecnico_inicia_atendimento(
+        chamado_id: int,
+        payload: Optional[IniciarAtendimentoPayload] = Body(None),
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(require_technician_role),
+):
+    """
+    Atalho no nível da OS: inicia o atendimento da visita aberta mais recente (mesmas regras de
+    `.../visitas/{v}/iniciar-atendimento`: ida finalizada e OS `Agendado`).
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    exigir_status(chamado, frozenset({StatusChamado.AGENDADO}), "iniciar o atendimento")
+    visita = repo.get_ultima_visita(chamado_id)
+    if visita is None:
+        raise HTTPException(status_code=400, detail="Não há visita para iniciar o atendimento.")
+    visita_service.iniciar_atendimento(repo, chamado, visita, payload.ocorrido_em if payload else None, current_user)
+    return _chamado_response(repo.get_chamado_by_id(chamado_id))
+
+
+# =====================================================================================================================
+# Visitas
+# =====================================================================================================================
 
 @router.post("/{chamado_id}/visitas", response_model=Visita, status_code=201)
 def add_visita_ao_chamado(
         chamado_id: int,
         visita_in: VisitaCreate,
-        repo: SQLRepository = Depends(get_chamado_repository),
+        repo: SQLRepository = Depends(get_repo),
         current_user: dict = Depends(get_current_active_user),
 ):
-    logged_user_id = current_user["user_id"]
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado")
-
-    if chamado.id_tecnico_atribuido != logged_user_id:
-        if current_user.get("role") != "admin":
-            raise HTTPException(status_code=403,
-                                detail="Você não tem permissão para adicionar uma visita neste chamado.")
-
+    """Cria uma visita vazia (admin ou técnico atribuído). Não altera o status da OS (que deve estar `Agendado`)."""
+    chamado = carregar_chamado(repo, chamado_id, current_user)
     if visita_in.servico_finalizado:
-        raise HTTPException(status_code=400,
-                            detail="Não é possível criar uma visita já finalizada. Crie a visita, faça os uploads e depois finalize-a.")
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível criar uma visita já finalizada. A visita finaliza ao concluir o deslocamento de volta.")
+    exigir_status(chamado, frozenset({StatusChamado.AGENDADO}), "criar visita")
+    if repo.get_visita_aberta(chamado_id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A OS já possui uma visita aberta (não finalizada); use-a ou reagende em vez de criar outra.")
 
-    visita_data = visita_in.model_dump()
-    visita_db = repo.create_visita(chamado_id, visita_data)
-
-    dados_update_chamado = {}
-    if visita_in.pendencia:
-        dados_update_chamado['status'] = StatusChamado.PENDENTE
-    elif chamado.status == StatusChamado.AGENDADO:
-        dados_update_chamado['status'] = StatusChamado.EM_ATENDIMENTO
-
-    if dados_update_chamado:
-        repo.update_chamado(chamado_id, dados_update_chamado)
-
-    return visita_db
+    dados = visita_in.model_dump(exclude={"servico_finalizado"})
+    try:
+        visita = repo.create_visita(chamado_id, dados, commit=False)
+        equipamento_service.garantir_servicos_da_visita(repo, chamado_id, visita)  # v0.5: 1 serviço por equipamento
+        repo.commit()
+    except Exception:
+        repo.rollback()
+        raise
+    return _visita_response(repo, visita.id_visita)
 
 
 @router.patch("/{chamado_id}/visitas/{visita_id}", response_model=Visita)
@@ -340,226 +252,101 @@ def update_visita_em_chamado(
         chamado_id: int,
         visita_id: int,
         visita_in: VisitaUpdate,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(get_current_active_user)
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
 ):
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado")
-
-    logged_user_id = current_user.get("user_id")
-    user_role = current_user.get("role")
-    if user_role == "tecnico" and chamado.id_tecnico_atribuido != logged_user_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para editar visitas deste chamado.")
-
-    visita_db = repo.get_visita_by_id(visita_id)
-    if not visita_db or visita_db.id_os != chamado_id:
-        raise HTTPException(status_code=404, detail=f"Visita com ID {visita_id} não encontrada neste chamado.")
+    """
+    Atualiza dados da visita (descrição, pedágio, frete, pendência e, só pelo admin e antes da ida, a data).
+    NÃO finaliza a visita nem a OS: isso só acontece no fim do deslocamento de volta.
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
 
     update_data = visita_in.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="Nenhum dado para atualizar foi fornecido.")
+    if update_data.get("servico_finalizado") is True:
+        raise HTTPException(
+            status_code=400,
+            detail="A visita não é finalizada por PATCH: ela termina ao finalizar o deslocamento de volta.")
+    update_data.pop("servico_finalizado", None)
 
-    visita_atualizada_dict = deep_update(visita_db.__dict__, update_data)
+    if chamado.status == StatusChamado.FINALIZADO:
+        raise HTTPException(status_code=409,
+                            detail="Visita de OS 'Finalizado' não pode ser alterada (custo congelado).")
+    for campo in ("data_visita", "valor_pedagio", "valor_frete_devolucao"):  # colunas NOT NULL
+        if campo in update_data and update_data[campo] is None:
+            update_data.pop(campo)
+    if visita.servico_finalizado:
+        for campo in ("valor_pedagio", "valor_frete_devolucao"):
+            if campo in update_data and float(update_data[campo]) != float(getattr(visita, campo) or 0):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Visita encerrada: '{campo}' não pode mais ser alterado (custo e comprovantes já fechados).")
+    if "data_visita" in update_data:
+        if current_user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Somente o administrador altera a data da visita.")
+        if visita_service.marco(visita, "ida_inicio") is not None:
+            raise HTTPException(status_code=409,
+                                detail="A ida já foi iniciada; a data da visita não pode mais ser alterada.")
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Nenhum dado para atualizar foi fornecido.")
 
-    if visita_atualizada_dict.get('servico_finalizado') is True:
-        if visita_atualizada_dict.get('km_total', 0) > 0:
-            if not visita_atualizada_dict.get('odometro_inicio_url') or not visita_atualizada_dict.get(
-                    'odometro_fim_url'):
-                raise HTTPException(status_code=400,
-                                    detail="Fotos do odômetro de início e fim são obrigatórias se km_total > 0.")
-
-        if visita_atualizada_dict.get('valor_pedagio', 0.0) > 0:
-            if not visita_atualizada_dict.get('comprovante_pedagio_urls'):
-                raise HTTPException(status_code=400,
-                                    detail="Comprovante(s) de pedágio são obrigatórios se valor_pedagio > 0.")
-
-        if visita_atualizada_dict.get('valor_frete_devolucao', 0.0) > 0:
-            if not visita_atualizada_dict.get('comprovante_frete_urls'):
-                raise HTTPException(status_code=400,
-                                    detail="Comprovante(s) de frete são obrigatórios se valor_frete_devolucao > 0.")
-
-        repo.update_chamado(chamado_id, {"status": StatusChamado.FINALIZADO, "data_conclusao": date.today()})
-
-    elif visita_atualizada_dict.get('servico_finalizado') is False:
-        pendencia = visita_atualizada_dict.get('pendencia')
-        repo.update_chamado(chamado_id, {
-            "status": StatusChamado.PENDENTE if pendencia else StatusChamado.EM_ATENDIMENTO,
-            "data_conclusao": None
-        })
-
-    updated_visita = repo.update_visita(visita_id, update_data)
-    if updated_visita is None:
-        raise HTTPException(status_code=404, detail="Erro ao atualizar visita.")
-
-    return updated_visita
-
-
-@router.post("/{chamado_id}/iniciar-atendimento", response_model=Chamado)
-def tecnico_inicia_atendimento(
-        chamado_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
-):
-    logged_user_id = current_user.get("user_id")
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado")
-
-    if chamado.id_tecnico_atribuido != logged_user_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para iniciar este chamado.")
-
-    if chamado.status not in [StatusChamado.AGENDADO, StatusChamado.PENDENTE]:
-        raise HTTPException(status_code=400, detail=f"Não é possível iniciar um chamado com status '{chamado.status}'")
-
-    update_data = {"status": StatusChamado.EM_ATENDIMENTO}
-    updated_chamado = repo.update_chamado(chamado_id, update_data)
-    return updated_chamado
+    try:
+        repo.update_visita(visita_id, update_data, commit=False)
+        if "data_visita" in update_data:  # D12: a data da OS acompanha a da visita
+            repo.update_chamado(chamado_id, {"data_agendamento": update_data["data_visita"]}, commit=False)
+        repo.commit()
+    except Exception:
+        repo.rollback()
+        raise
+    return _visita_response(repo, visita_id)
 
 
-@router.get("/{chamado_id}/custos", response_model=CustoTotalResponse)
-def get_custos_do_chamado(
-        chamado_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(get_current_active_user)
-):
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado.")
-
-    user_id = current_user.get("user_id")
-    user_role = current_user.get("role")
-    if user_role == "tecnico" and chamado.id_tecnico_atribuido != user_id:
-        raise HTTPException(status_code=403, detail="Acesso negado aos custos deste chamado.")
-
-    service = CustoService()
-    chamado_dict = Chamado.model_validate(chamado).model_dump()
-    custos = service.calcular_custo_chamado(chamado_dict)
-    return custos
-
-
-@router.post("/{chamado_id}/visitas/{visita_id}/upload_file", response_model=Visita)
-def upload_file_visita(
+@router.get("/{chamado_id}/visitas/{visita_id}/estado")
+def estado_visita(
         chamado_id: int,
         visita_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
+        repo: SQLRepository = Depends(get_repo),
         current_user: dict = Depends(get_current_active_user),
-        file: UploadFile = File(...),
-        file_type: str = Form(..., description="Campo da visita para ser atualizado (URL do arquivo)."),
 ):
-    logged_user_id = current_user.get("user_id")
-    user_role = current_user.get("role")
-    chamado = repo.get_chamado_by_id(chamado_id)
-
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado.")
-
-    if user_role == "tecnico" and chamado.id_tecnico_atribuido != logged_user_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para este chamado.")
-
-    visita_db = repo.get_visita_by_id(visita_id)
-    if not visita_db or visita_db.id_os != chamado_id:
-        raise HTTPException(status_code=404, detail=f"Visita com ID {visita_id} não encontrada.")
-
-    valid_fields = SINGLE_FILE_FIELDS + MULTI_FILE_FIELDS
-    if file_type not in valid_fields:
-        raise HTTPException(status_code=400, detail=f"Tipo de arquivo inválido: '{file_type}'.")
-
-    prefixo_nome_arquivo = f"chamado_{chamado_id}_visita_{visita_id}_{file_type}"
-    file_url = save_upload_file(file, prefixo_nome_arquivo)
-
-    visita_para_atualizar = {}
-    if file_type in SINGLE_FILE_FIELDS:
-        visita_para_atualizar[file_type] = file_url
-    elif file_type in MULTI_FILE_FIELDS:
-        current_list = getattr(visita_db, file_type) or []
-        if not isinstance(current_list, list): current_list = []
-        current_list.append(file_url)
-        visita_para_atualizar[file_type] = current_list
-
-    visita_atualizada = repo.update_visita(visita_id, visita_para_atualizar)
-    return visita_atualizada
+    """Fonte de verdade dos botões do app (6.6.3)."""
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    return visita_service.calcular_estado(repo, chamado, visita)
 
 
-@router.post("/{chamado_id}/visitas/{visita_id}/finalizar-deslocamento")
+@router.post("/{chamado_id}/visitas/{visita_id}/iniciar-deslocamento")
+def iniciar_deslocamento(
+        chamado_id: int,
+        visita_id: int,
+        payload: IniciarDeslocamentoPayload,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(require_technician_role),
+):
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    return visita_service.iniciar_deslocamento(repo, chamado, visita, payload.tipo, payload.km_inicio,
+                                               payload.ocorrido_em)
+
+
+@router.post("/{chamado_id}/visitas/{visita_id}/finalizar-deslocamento", response_model=Visita)
 def finalizar_deslocamento(
         chamado_id: int,
         visita_id: int,
-        payload: Dict[str, Any] = Body(...),
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
+        payload: FinalizarDeslocamentoPayload,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(require_technician_role),
 ):
-    tipo = payload.get("tipo")
-    km_fim = payload.get("km_fim")
-
-    if tipo not in ["ida", "volta"]:
-        raise HTTPException(status_code=400, detail="tipo deve ser 'ida' ou 'volta'")
-
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita:
-        raise HTTPException(status_code=404, detail="Visita não encontrada")
-
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado")
-    logged_user_id = current_user.get("user_id")
-    if current_user.get("role") == "tecnico" and chamado.id_tecnico_atribuido != logged_user_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para este chamado.")
-
-    now_time = datetime.now().strftime("%H:%M")
-
-    print(f"[DEBUG FINALIZAR-DESLOCAMENTO] tipo={tipo}, km_fim={km_fim}, visita_id={visita_id}")
-    print(f"[DEBUG] ANTES - hora_inicio_ida={getattr(visita, 'hora_inicio_ida', None)}, hora_fim_ida={getattr(visita, 'hora_fim_ida', None)}, hora_inicio_volta={getattr(visita, 'hora_inicio_volta', None)}, hora_fim_volta={getattr(visita, 'hora_fim_volta', None)}")
-
-    if tipo == "ida":
-        if not getattr(visita, "hora_inicio_ida", None):
-            raise HTTPException(status_code=400, detail="Deslocamento de ida não foi iniciado")
-        if getattr(visita, "hora_fim_ida", None):
-            raise HTTPException(status_code=400, detail="Deslocamento de ida já foi finalizado")
-
-        update = {
-            "km_fim_ida": km_fim,
-            "hora_fim_ida": now_time
-        }
-        print(f"[DEBUG] UPDATE IDA: {update}")
-    else:  # volta
-        if not getattr(visita, "hora_inicio_volta", None):
-            raise HTTPException(status_code=400, detail="Deslocamento de volta não foi iniciado")
-        if getattr(visita, "hora_fim_volta", None):
-            raise HTTPException(status_code=400, detail="Deslocamento de volta já foi finalizado")
-
-        update = {
-            "km_fim_volta": km_fim,
-            "hora_fim_volta": now_time
-        }
-        print(f"[DEBUG] UPDATE VOLTA: {update}")
-
-    # Se finalizando a volta, marca como serviço finalizado
-    if tipo == "volta":
-        update["servico_finalizado"] = True
-
-    visita_editada = repo.update_visita(visita_id, update)
-
-    print(f"[DEBUG] DEPOIS - hora_inicio_ida={getattr(visita_editada, 'hora_inicio_ida', None)}, hora_fim_ida={getattr(visita_editada, 'hora_fim_ida', None)}, hora_inicio_volta={getattr(visita_editada, 'hora_inicio_volta', None)}, hora_fim_volta={getattr(visita_editada, 'hora_fim_volta', None)}")
-
-    if tipo == "volta":
-        # Marca o chamado como finalizado quando volta é finalizada
-        # Se houver pausa ativa, manter em aguardando reagendamento
-        try:
-            pausas = repo.get_pausas_by_visita(visita_id)
-        except Exception:
-            pausas = []
-
-        is_pausada = any(getattr(p, 'is_ativa', False) for p in pausas)
-        if is_pausada:
-            repo.update_chamado(chamado_id, {"status": StatusChamado.AGUARDANDO_REAGENDAMENTO})
-        else:
-            repo.update_chamado(chamado_id, {
-                "status": StatusChamado.FINALIZADO,
-                "data_conclusao": date.today()
-            })
-
-    return visita_editada
+    """
+    Ida: fecha o trajeto. Volta: encerra a visita. Sem pausa ativa -> OS `Finalizado` + custo congelado; com pausa
+    ativa -> OS `Aguardando Reagendamento` (a pausa segue ativa até reagendar).
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    resultado = visita_service.finalizar_deslocamento(repo, chamado, visita, payload.tipo, payload.km_fim,
+                                                      payload.ocorrido_em, current_user)
+    return Visita.model_validate(resultado)
 
 
 @router.post("/{chamado_id}/visitas/{visita_id}/upload-deslocamento", response_model=Visita)
@@ -569,521 +356,362 @@ def upload_foto_deslocamento(
         file: UploadFile = File(...),
         tipo: str = Form(...),  # "ida" | "volta"
         momento: str = Form(...),  # "inicio" | "fim"
-        repo: SQLRepository = Depends(get_chamado_repository),
+        repo: SQLRepository = Depends(get_repo),
         current_user: dict = Depends(get_current_active_user),
 ):
-    if tipo not in ["ida", "volta"]:
+    """Foto de odômetro/deslocamento (sem resolução mínima). Admin ou técnico atribuído."""
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    _exigir_os_nao_finalizada(chamado)
+    visita_service.exigir_visita_vigente(repo, chamado, visita)
+    if tipo not in ("ida", "volta"):
         raise HTTPException(status_code=400, detail="tipo inválido")
-    if momento not in ["inicio", "fim"]:
+    if momento not in ("inicio", "fim"):
         raise HTTPException(status_code=400, detail="momento inválido")
 
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado.")
-
-    logged_user_id = current_user.get("user_id")
-    user_role = current_user.get("role")
-    if user_role == "tecnico" and chamado.id_tecnico_atribuido != logged_user_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para este chamado.")
-
-    visita_db = repo.get_visita_by_id(visita_id)
-    if not visita_db or visita_db.id_os != chamado_id:
-        raise HTTPException(status_code=404, detail=f"Visita com ID {visita_id} não encontrada.")
-
-    prefix = f"visita_{visita_id}_{tipo}_{momento}"
-    file_url = save_upload_file(file, prefix)
-
-    field = f"foto_{momento}_{tipo}_url"  # ex: foto_inicio_ida_url
-    update = {field: file_url}
-    updated = repo.update_visita(visita_id, update)
-    return updated
+    campo = f"foto_{momento}_{tipo}_url"  # ex.: foto_inicio_ida_url
+    url = file_service.save_upload_file(file, f"chamado_{chamado_id}_visita_{visita_id}_{campo}")
+    try:
+        repo.update_visita(visita.id_visita, {campo: url}, commit=False)
+        _registrar_upload(repo, chamado, current_user, id_visita=visita.id_visita, campo=campo)
+    except Exception:
+        file_service.remover_arquivo_por_url(url)
+        raise
+    _salvar_ou_limpar(repo, url)
+    return _visita_response(repo, visita_id)
 
 
-@router.get("/{chamado_id}/visitas/{visita_id}/estado")
-def estado_visita(
+@router.post("/{chamado_id}/visitas/{visita_id}/upload_file", response_model=Visita)
+def upload_file_visita(
         chamado_id: int,
         visita_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
+        repo: SQLRepository = Depends(get_repo),
         current_user: dict = Depends(get_current_active_user),
+        file: UploadFile = File(...),
+        file_type: str = Form(..., description="Campo da visita alimentado pelo arquivo."),
 ):
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita:
-        raise HTTPException(status_code=404, detail="Visita não encontrada")
+    """
+    Upload genérico. `file_type` simples (odometro_*_url, foto_*_url) grava a URL na coluna da visita;
+    `comprovante_pedagio_urls` / `comprovante_frete_urls` criam um registro em `comprovante` (tipo pedagio/frete).
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    _exigir_os_nao_finalizada(chamado)
+    visita_service.exigir_visita_vigente(repo, chamado, visita)
+    if file_type not in SINGLE_FILE_FIELDS and file_type not in COMPROVANTE_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Tipo de arquivo inválido: '{file_type}'.")
 
-    # Função auxiliar para normalizar o valor - converte strings vazias para None
-    def clean(v):
-        if v is None:
-            return None
-        if isinstance(v, str):
-            v = v.strip()
-            if v == "" or v == " ":
-                return None
-        return v
-
-    # ===== SISTEMA NOVO (IDA/VOLTA) =====
-    hora_inicio_ida = clean(getattr(visita, "hora_inicio_ida", None))
-    hora_fim_ida = clean(getattr(visita, "hora_fim_ida", None))
-
-    hora_inicio_atendimento = clean(getattr(visita, "hora_inicio_atendimento", None))
-    hora_fim_atendimento = clean(getattr(visita, "hora_fim_atendimento", None))
-
-    hora_inicio_volta = clean(getattr(visita, "hora_inicio_volta", None))
-    hora_fim_volta = clean(getattr(visita, "hora_fim_volta", None))
-
-    # DEBUG: Log dos valores BRUTOS do banco
-    print(f"[DEBUG ESTADO - RAW DB] hora_inicio_ida={repr(getattr(visita, 'hora_inicio_ida', None))}, hora_fim_ida={repr(getattr(visita, 'hora_fim_ida', None))}, hora_inicio_atendimento={repr(getattr(visita, 'hora_inicio_atendimento', None))}, hora_fim_atendimento={repr(getattr(visita, 'hora_fim_atendimento', None))}, hora_inicio_volta={repr(getattr(visita, 'hora_inicio_volta', None))}")
-
-    # DEBUG: Log dos valores depois de limpeza
-    print(f"[DEBUG ESTADO - CLEANED] hora_fim_ida={hora_fim_ida}, hora_inicio_atendimento={hora_inicio_atendimento}, hora_fim_atendimento={hora_fim_atendimento}, hora_inicio_volta={hora_inicio_volta}")
-
-    estado = {
-        # 1) Ida
-        "pode_iniciar_deslocamento_ida": hora_inicio_ida is None,
-        "pode_finalizar_deslocamento_ida": hora_inicio_ida is not None and hora_fim_ida is None,
-
-        # 2) Atendimento
-        "pode_iniciar_atendimento": hora_fim_ida is not None and hora_inicio_atendimento is None,
-        "pode_finalizar_atendimento": hora_inicio_atendimento is not None and hora_fim_atendimento is None,
-
-        # 3) Volta
-        "pode_iniciar_deslocamento_volta": hora_fim_atendimento is not None and hora_inicio_volta is None,
-        "pode_finalizar_deslocamento_volta": hora_inicio_volta is not None and hora_fim_volta is None,
-
-        # 4) Conclusão final
-        "pode_concluir_chamado": hora_fim_volta is not None,
-    }
-
-    # Verifica pausas ativas para esta visita
+    url = file_service.save_upload_file(file, f"chamado_{chamado_id}_visita_{visita_id}_{file_type}")
     try:
-        pausas = repo.get_pausas_by_visita(visita_id)
+        if file_type in COMPROVANTE_FIELDS:
+            repo.add_comprovante(visita.id_visita, COMPROVANTE_FIELDS[file_type], url, commit=False)
+        else:
+            repo.update_visita(visita.id_visita, {file_type: url}, commit=False)
+        _registrar_upload(repo, chamado, current_user, id_visita=visita.id_visita, campo=file_type)
     except Exception:
-        pausas = []
-
-    is_pausada = any(getattr(p, 'is_ativa', False) for p in pausas)
-    motivo_pausa = None
-    if is_pausada:
-        # pega a última pausa ativa
-        for p in reversed(pausas):
-            if getattr(p, 'is_ativa', False):
-                motivo_pausa = getattr(p, 'motivo', None)
-                break
-
-    # Permite pausar se já estiver em atendimento e não estiver pausada
-    pode_pausar = (hora_inicio_atendimento is not None and hora_fim_atendimento is None and not is_pausada)
-
-    estado.update({
-        "pode_pausar_os": pode_pausar,
-        "is_os_pausada": is_pausada,
-        "motivo_pausa": motivo_pausa
-    })
-
-    # Se a visita estiver pausada, não permitir finalizar atendimento.
-    # Se estiver pausada e a volta ainda não foi iniciada, permitir iniciar deslocamento de volta.
-    if is_pausada:
-        estado["pode_finalizar_atendimento"] = False
-        if hora_inicio_volta is None:
-            estado["pode_iniciar_deslocamento_volta"] = True
-
-    print(f"[DEBUG ESTADO - FINAL RESULT] {estado}")
-
-    return estado
+        file_service.remover_arquivo_por_url(url)
+        raise
+    _salvar_ou_limpar(repo, url)
+    return _visita_response(repo, visita_id)
 
 
-@router.post("/{chamado_id}/visitas/{visita_id}/iniciar-atendimento")
+@router.post("/{chamado_id}/visitas/{visita_id}/iniciar-atendimento", response_model=Visita)
 def iniciar_atendimento_visita(
         chamado_id: int,
         visita_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
+        payload: Optional[IniciarAtendimentoPayload] = Body(None),
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(require_technician_role),
 ):
-    # Verifica o chamado
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado")
-
-    # Permissão
-    logged_user_id = current_user.get("user_id")
-    if chamado.id_tecnico_atribuido != logged_user_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para este chamado.")
-
-    # Verifica a visita
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita or visita.id_os != chamado_id:
-        raise HTTPException(status_code=404, detail="Visita não encontrada neste chamado")
-
-    # Já iniciou?
-    if getattr(visita, "hora_inicio_atendimento", None):
-        raise HTTPException(status_code=400, detail="Atendimento já foi iniciado.")
-
-    # Define hora atual HH:mm
-    now = datetime.now().strftime("%H:%M")
-
-    update = {
-        "hora_inicio_atendimento": now
-    }
-
-    visita_atualizada = repo.update_visita(visita_id, update)
-
-    # Atualiza status do chamado
-    repo.update_chamado(chamado_id, {"status": StatusChamado.EM_ATENDIMENTO})
-
-    return visita_atualizada
+    """Exige ida finalizada (400) e OS `Agendado` (409); OS -> `Em Atendimento` (RN-17 / PR-36)."""
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    resultado = visita_service.iniciar_atendimento(repo, chamado, visita, payload.ocorrido_em if payload else None,
+                                                   current_user)
+    return Visita.model_validate(resultado)
 
 
 @router.post("/{chamado_id}/visitas/{visita_id}/pausar")
 def pausar_visita(
         chamado_id: int,
         visita_id: int,
-        payload: Dict[str, Any] = Body(...),
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
+        payload: PausarPayload,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
 ):
-    """Registra uma pausa para a visita e atualiza o status do chamado para PAUSADO.
-    Payload: { motivo: str, descricao?: str }
     """
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado")
-
-    logged_user_id = current_user.get("user_id")
-    user_role = current_user.get("role")
-    if user_role == "tecnico" and chamado.id_tecnico_atribuido != logged_user_id:
-        raise HTTPException(status_code=403, detail="Você não tem permissão para pausar este chamado.")
-
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita or visita.id_os != chamado_id:
-        raise HTTPException(status_code=404, detail="Visita não encontrada neste chamado")
-
-    # Só permite pausar se estiver em atendimento (iniciado, não finalizado)
-    if not getattr(visita, 'hora_inicio_atendimento', None) or getattr(visita, 'hora_fim_atendimento', None):
-        raise HTTPException(status_code=400, detail="Só é possível pausar uma visita que esteja em atendimento.")
-
-    motivo = payload.get('motivo')
-    if not motivo:
-        raise HTTPException(status_code=400, detail="Motivo da pausa é obrigatório.")
-    descricao = payload.get('descricao')
-
-    pausa = repo.create_pausa(visita_id, {"motivo": motivo, "descricao": descricao}, por_tecnico_id=(logged_user_id if user_role == 'tecnico' else None))
-
+    Pausa a visita em atendimento (RN-26/29/30). Admin OU técnico atribuído. Grava quem pausou e com qual papel.
+    Motivo fora da lista oficial ou "Outro" sem descrição -> 422.
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    pausa = visita_service.pausar(repo, chamado, visita, payload.motivo.value, payload.descricao,
+                                  payload.ocorrido_em, current_user)
     return {
         "status": "ok",
         "id_pausa": pausa.id_pausa,
         "visita_id": pausa.visita_id,
         "motivo": pausa.motivo,
         "descricao": pausa.descricao,
-        "criado_em": pausa.criado_em.isoformat() if getattr(pausa, 'criado_em', None) else None,
-        "is_ativa": pausa.is_ativa
+        "criado_em": pausa.criado_em.isoformat() if pausa.criado_em else None,
+        "is_ativa": pausa.is_ativa,
+        "por_usuario_id": pausa.por_usuario_id,
+        "por_papel": pausa.por_papel,
     }
-
-
-@router.post("/{chamado_id}/reagendar", response_model=Visita)
-def reagendar_chamado(
-        chamado_id: int,
-        visita_in: VisitaCreate,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        _admin_user: dict = Depends(require_admin_role)
-):
-    """Cria uma nova visita para o chamado (reagendamento) e limpa pausas ativas.
-    Apenas admins podem chamar este endpoint.
-    """
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado")
-
-    visita_data = visita_in.model_dump()
-    visita_db = repo.create_visita(chamado_id, visita_data)
-
-    # Marca pausas antigas como resolvidas/inativas
-    try:
-        repo.resolve_pausas_for_chamado(chamado_id)
-    except Exception:
-        pass
-
-    # Atualiza status do chamado para AGENDADO
-    repo.update_chamado(chamado_id, {"status": StatusChamado.AGENDADO})
-
-    return visita_db
-
-
-@router.get("/{chamado_id}/visitas/{visita_id}/servicos")
-def listar_servicos_equipamento(chamado_id: int, visita_id: int,
-                                repo: SQLRepository = Depends(get_chamado_repository),
-                                current_user: dict = Depends(get_current_active_user)):
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(404, "Chamado não encontrado ou cancelado.")
-
-    if current_user["role"] == "tecnico" and chamado.id_tecnico_atribuido != current_user["user_id"]:
-        raise HTTPException(403, "Acesso negado.")
-
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita or visita.id_os != chamado_id:
-        raise HTTPException(404, "Visita não encontrada neste chamado.")
-
-    servicos = repo.get_servicos_by_visita(visita_id)
-    return [servico_to_dict(s) for s in servicos]
-
-
-@router.post("/{chamado_id}/visitas/{visita_id}/servicos")
-def criar_servico_equipamento(chamado_id: int, visita_id: int,
-                              payload: Dict[str, Any] = Body(...),
-                              repo: SQLRepository = Depends(get_chamado_repository),
-                              current_user: dict = Depends(require_technician_role)):
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(404, "Chamado não encontrado ou cancelado.")
-
-    if chamado.id_tecnico_atribuido != current_user["user_id"]:
-        raise HTTPException(403, "Você não tem permissão.")
-
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita or visita.id_os != chamado_id:
-        raise HTTPException(404, "Visita não encontrada neste chamado.")
-
-    materiais = payload.pop("materiais_utilizados", [])
-
-    servico = repo.create_servico_equipamento(visita_id, payload)
-
-    for m in materiais:
-        repo.db.add(Material(
-            id_servico=servico.id_servico,
-            nome=m["nome"],
-            quantidade=m["quantidade"],
-            valor=m["valor"]
-        ))
-
-    repo.db.commit()
-
-    return servico_to_dict(servico)
-
-
-@router.patch("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}")
-def atualizar_servico_equipamento(chamado_id: int, visita_id: int, servico_id: int,
-                                  payload: Dict[str, Any] = Body(...),
-                                  repo: SQLRepository = Depends(get_chamado_repository),
-                                  current_user: dict = Depends(require_technician_role)):
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(404, "Chamado não encontrado.")
-
-    if chamado.id_tecnico_atribuido != current_user["user_id"]:
-        raise HTTPException(403, "Você não tem permissão.")
-
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita or visita.id_os != chamado_id:
-        raise HTTPException(404, "Visita não encontrada neste chamado.")
-
-    materiais = payload.pop("materiais_utilizados", None)
-
-    servico_atualizado = repo.update_servico_equipamento(servico_id, payload)
-    if not servico_atualizado:
-        raise HTTPException(404, "Serviço não encontrado.")
-
-    if materiais is not None:
-        repo.db.query(Material).filter(Material.id_servico == servico_id).delete()
-
-        for m in materiais:
-            repo.db.add(Material(
-                id_servico=servico_id,
-                nome=m["nome"],
-                quantidade=m["quantidade"],
-                valor=m["valor"]
-            ))
-
-        repo.db.commit()
-
-    repo.db.commit()
-
-    return servico_to_dict(servico_atualizado)
-
-# Duplicated simplified PATCH removed. Use the full update implementation
-# `update_visita_e_chamado` / `update_visita_em_chamado` present earlier
-# in this file which enforces business rules (assinatura, odômetro, etc.).
-
-
-@router.post("/{chamado_id}/visitas/{visita_id}/finalizar-dados")
-def salvar_dados_cliente(
-        chamado_id: int,
-        visita_id: int,
-        payload: Dict[str, str] = Body(...),
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
-):
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita:
-        raise HTTPException(status_code=404, detail="Visita não encontrada")
-
-    nome = payload.get("nome_cliente")
-    documento = payload.get("documento_cliente")
-
-    if not nome or not documento:
-        raise HTTPException(status_code=400, detail="Nome e documento são obrigatórios.")
-
-    update = {
-        "nome_cliente": nome,
-        "documento_cliente": documento
-    }
-
-    repo.update_visita(visita_id, update)
-
-    return {"message": "Dados registrados com sucesso"}
 
 
 @router.post("/{chamado_id}/visitas/{visita_id}/finalizar-atendimento")
 def finalizar_atendimento(
         chamado_id: int,
         visita_id: int,
-        payload: dict = Body(...),
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
+        payload: FinalizarAtendimentoPayload,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(require_technician_role),
 ):
-    nome_cliente = payload.get("nome_cliente")
-    documento_cliente = payload.get("documento_cliente")
-    assinatura_base64 = payload.get("assinatura_base64")
-
-    if not nome_cliente or not documento_cliente or not assinatura_base64:
-        raise HTTPException(status_code=400, detail="Campos obrigatórios faltando.")
-
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita:
-        raise HTTPException(status_code=404, detail="Visita não encontrada")
-
-    # Bloqueia finalização do atendimento se houver pausa ativa
-    try:
-        pausas = repo.get_pausas_by_visita(visita_id)
-    except Exception:
-        pausas = []
-    if any(getattr(p, 'is_ativa', False) for p in pausas):
-        raise HTTPException(status_code=400, detail="Não é possível finalizar o atendimento enquanto a OS estiver pausada.")
-
-    if assinatura_base64.startswith("data:image"):
-        assinatura_base64 = assinatura_base64.split(",")[1]
-
-    img_bytes = base64.b64decode(assinatura_base64)
-
-    filename = f"{uuid.uuid4().hex}.png"
-    filepath = os.path.join(ASSINATURA_DIR, filename)
-
-    with open(filepath, "wb") as f:
-        f.write(img_bytes)
-
-    assinatura_url = f"/static/assinaturas/{filename}"
-
-    # Apenas finaliza o atendimento, NOT the service (servico_finalizado)
-    # servico_finalizado será True apenas quando deslocamento volta for finalizado
-    update_data = {
-        "nome_cliente": nome_cliente,
-        "documento_cliente": documento_cliente,
-        "hora_fim_atendimento": datetime.now().strftime("%H:%M")
-    }
-
-    repo.update_visita(visita_id, update_data)
-    
-    # Atualizar a assinatura na ordem_servico
-    repo.update_chamado(chamado_id, {"assinatura_cliente_url": assinatura_url})
-
-    # NÃO marca como finalizado aqui - apenas o atendimento foi finalizado
-    # O chamado será finalizado após deslocamento volta
-    repo.db.commit()
-
-    return {
-        "status": "ok",
-        "assinatura_url": assinatura_url
-    }
+    """Grava nome, CPF (só dígitos) e assinatura NA VISITA. CPF inválido -> 422; pausa ativa -> 400."""
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    return visita_service.finalizar_atendimento(
+        repo, chamado, visita, payload.nome_cliente, payload.documento_cliente, payload.assinatura_base64,
+        payload.ocorrido_em, current_user)
 
 
-@router.post("/{chamado_id}/visitas/{visita_id}/iniciar-deslocamento")
-def iniciar_deslocamento(
+@router.post("/{chamado_id}/visitas/{visita_id}/finalizar-dados", status_code=410)
+def salvar_dados_cliente(
         chamado_id: int,
         visita_id: int,
-        payload: IniciarDeslocamentoPayload,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
-
+        _current_user: dict = Depends(require_technician_role),
 ):
-    tipo = payload.tipo
-    km_inicio = payload.km_inicio
-
-    if tipo not in ["ida", "volta"]:
-        raise HTTPException(status_code=400, detail="tipo deve ser 'ida' ou 'volta'")
-
-    if km_inicio is None:
-        raise HTTPException(status_code=400, detail="km_inicio é obrigatório")
-
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado or chamado.is_cancelled:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado")
-
-    if chamado.id_tecnico_atribuido != current_user["user_id"]:
-        raise HTTPException(status_code=403, detail="Você não tem permissão")
-
-    visita = repo.get_visita_by_id(visita_id)
-    if not visita or visita.id_os != chamado_id:
-        raise HTTPException(status_code=404, detail="Visita não encontrada no chamado")
-
-    now_time = datetime.now().strftime("%H:%M")
-
-    if tipo == "ida":
-        if getattr(visita, "hora_inicio_ida", None):
-            raise HTTPException(status_code=400, detail="Deslocamento de ida já iniciado")
-
-        update = {
-            "km_inicio_ida": km_inicio,
-            "hora_inicio_ida": now_time
-        }
-
-    if tipo == "volta":
-        # Permite iniciar deslocamento de volta se o atendimento foi finalizado
-        # OU se a visita estiver pausada (caso em que o técnico retorna sem finalizar atendimento)
-        try:
-            pausas = repo.get_pausas_by_visita(visita_id)
-        except Exception:
-            pausas = []
-        is_pausada = any(getattr(p, 'is_ativa', False) for p in pausas)
-
-        if not getattr(visita, "hora_fim_atendimento", None) and not is_pausada:
-            raise HTTPException(
-                status_code=400,
-                detail="Finalize o atendimento antes de iniciar o deslocamento de volta"
-            )
-
-        if getattr(visita, "hora_inicio_volta", None):
-            raise HTTPException(status_code=400, detail="Deslocamento de volta já iniciado")
-
-        update = {
-            "km_inicio_volta": km_inicio,
-            "hora_inicio_volta": now_time
-        }
-
-    visita_editada = repo.update_visita(visita_id, update)
-    repo.db.commit()
-
-    return {
-        "message": "Deslocamento iniciado com sucesso",
-        "tipo": tipo,
-        "km_inicio": km_inicio,
-        "hora_inicio": now_time
-    }
+    """DESCONTINUADO (PR-10): nome, CPF e assinatura vão juntos em `finalizar-atendimento`."""
+    raise HTTPException(
+        status_code=410,
+        detail="Rota descontinuada: envie nome_cliente, documento_cliente e assinatura_base64 em finalizar-atendimento.")
 
 
-@router.post("/{chamado_id}/concluir")
-def concluir_chamado(
+# =====================================================================================================================
+# Serviços por equipamento (6.7)
+# =====================================================================================================================
+
+def _carregar_servico(repo: SQLRepository, visita, servico_id: int):
+    """404 se o serviço não existe ou não pertence à visita (evita acessar serviço de outra visita/OS)."""
+    servico = repo.get_servico_by_id(servico_id)
+    if servico is None or servico.id_visita != visita.id_visita:
+        raise HTTPException(status_code=404, detail="Serviço não encontrado nesta visita.")
+    return servico
+
+
+@router.get("/{chamado_id}/visitas/{visita_id}/servicos", response_model=List[ServicoEquipamento])
+def listar_servicos_equipamento(
         chamado_id: int,
-        repo: SQLRepository = Depends(get_chamado_repository),
-        current_user: dict = Depends(require_technician_role)
+        visita_id: int,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
 ):
-    chamado = repo.get_chamado_by_id(chamado_id)
-    if not chamado:
-        raise HTTPException(status_code=404, detail="Chamado não encontrado")
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    return [ServicoEquipamento.model_validate(s) for s in repo.get_servicos_by_visita(visita.id_visita)]
 
-    if chamado.id_tecnico_atribuido != current_user["user_id"]:
-        raise HTTPException(status_code=403, detail="Você não tem permissão")
 
-    repo.update_chamado(chamado_id, {
-        "status": StatusChamado.FINALIZADO,
-        "data_conclusao": date.today()
-    })
+@router.post("/{chamado_id}/visitas/{visita_id}/servicos", status_code=410)
+def criar_servico_equipamento(
+        chamado_id: int,
+        visita_id: int,
+        _current_user: dict = Depends(require_technician_role),
+):
+    """
+    DESCONTINUADO (v0.5, RN-42): o técnico não cadastra equipamento nem serviço. O servidor cria um registro de serviço
+    por equipamento da OS quando a visita abre; use `GET .../servicos` e `PATCH .../servicos/{s}`.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail=("Rota descontinuada: o equipamento vem da OS e o registro de serviço é criado pelo servidor. "
+                "Use GET .../servicos e PATCH .../servicos/{id_servico}."))
 
-    repo.db.commit()
 
-    return {"status": "ok", "message": "Chamado concluído com sucesso"}
+@router.patch("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}", response_model=ServicoEquipamento)
+def atualizar_servico_equipamento(
+        chamado_id: int,
+        visita_id: int,
+        servico_id: int,
+        payload: ServicoEquipamentoUpdate,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
+):
+    """
+    Técnico atribuído: defeitos, descrições e materiais (nunca equipamento/série: 422). Administrador: SOMENTE
+    `materiais_utilizados` e SOMENTE com a OS `Finalizado` (RN-49), recalculando o custo com os valores congelados.
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    servico = _carregar_servico(repo, visita, servico_id)
+    dados = payload.model_dump(exclude_unset=True)
+    if current_user.get("role") == "admin":
+        servico_service.exigir_correcao_admin(chamado)
+        if set(dados) != {"materiais_utilizados"} or dados["materiais_utilizados"] is None:
+            raise HTTPException(
+                status_code=422,
+                detail=("Após a finalização o administrador só pode corrigir 'materiais_utilizados' "
+                        "(fotos têm rota própria); modelo, série, defeitos e conserto não são editáveis."))
+        atualizado = servico_service.corrigir_materiais_admin(repo, chamado, visita, servico,
+                                                              dados["materiais_utilizados"], current_user)
+    else:
+        if not dados:
+            raise HTTPException(status_code=400, detail="Nenhum dado para atualizar foi fornecido.")
+        atualizado = servico_service.atualizar_servico_tecnico(repo, chamado, visita, servico, dados, current_user)
+    return ServicoEquipamento.model_validate(atualizado)
+
+
+@router.post("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/salvar-conserto",
+             response_model=ServicoEquipamento)
+def salvar_conserto_servico(
+        chamado_id: int,
+        visita_id: int,
+        servico_id: int,
+        payload: Optional[SalvarConsertoPayload] = Body(None),
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(require_technician_role),
+):
+    """"Salvar conserto" do equipamento (RN-47): atendimento iniciado, sem pausa, com ao menos um defeito principal."""
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    servico = _carregar_servico(repo, visita, servico_id)
+    salvo = servico_service.salvar_conserto(repo, chamado, visita, servico,
+                                            payload.ocorrido_em if payload else None, current_user)
+    return ServicoEquipamento.model_validate(salvo)
+
+
+@router.post("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/upload-foto", response_model=UploadFotoResponse)
+def upload_foto_servico(
+        chamado_id: int,
+        visita_id: int,
+        servico_id: int,
+        tipo: str = Form(..., description="'defeito' ou 'conserto'"),
+        file: UploadFile = File(...),
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
+):
+    """
+    Foto do serviço (RN-21: 960x1280 em qualquer orientação só para `conserto`). Técnico atribuído, nas fases do
+    atendimento (PR-42). Administrador: somente como correção em OS `Finalizado` (RN-49), auditada.
+    """
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    servico = _carregar_servico(repo, visita, servico_id)
+    eh_admin = current_user.get("role") == "admin"
+    if eh_admin:
+        servico_service.exigir_correcao_admin(chamado)
+    else:
+        _exigir_os_nao_finalizada(chamado)
+        visita_service.exigir_visita_vigente(repo, chamado, visita)
+    if tipo not in ("defeito", "conserto"):
+        raise HTTPException(status_code=400, detail="O tipo da foto deve ser 'defeito' ou 'conserto'.")
+    if not eh_admin:
+        servico_service.exigir_fase_da_foto(chamado, visita, tipo)
+
+    url = file_service.save_upload_file(
+        file, f"chamado_{chamado_id}_visita_{visita_id}_servico_{servico_id}_{tipo}",
+        exigir_resolucao_minima=(tipo == "conserto"))
+    try:
+        foto = repo.add_servico_foto(servico.id_servico, tipo, url, commit=False)
+        if eh_admin:
+            servico_service.registrar_foto_corrigida(repo, chamado, visita, servico, foto, "enviada", current_user)
+        else:
+            _registrar_upload(repo, chamado, current_user, id_visita=visita.id_visita, id_servico=servico.id_servico,
+                              campo=f"foto_{tipo}")
+        repo.commit()
+    except Exception:
+        repo.rollback()
+        file_service.remover_arquivo_por_url(url)
+        raise
+    return UploadFotoResponse(status="ok", url=url, tipo=tipo, id_foto=foto.id_foto)
+
+
+@router.delete("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/fotos/{foto_id}", status_code=204)
+def remover_foto_servico(
+        chamado_id: int,
+        visita_id: int,
+        servico_id: int,
+        foto_id: int,
+        repo: SQLRepository = Depends(get_repo),
+        admin_user: dict = Depends(require_admin_role),
+):
+    """Correção administrativa (RN-49): remove uma foto de OS Finalizada; nunca a última do tipo (409)."""
+    chamado = carregar_chamado(repo, chamado_id, admin_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    servico = _carregar_servico(repo, visita, servico_id)
+    servico_service.remover_foto_admin(repo, chamado, visita, servico, foto_id, admin_user)
+    return Response(status_code=204)
+
+
+@router.get("/{chamado_id}/visitas/{visita_id}/servicos/{servico_id}/fotos", response_model=ServicoFotoListResponse)
+def get_fotos_servico(
+        chamado_id: int,
+        visita_id: int,
+        servico_id: int,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
+):
+    """Fotos (defeito e conserto) de um serviço. Admin ou técnico atribuído."""
+    chamado = carregar_chamado(repo, chamado_id, current_user)
+    visita = carregar_visita(repo, chamado, visita_id)
+    servico = _carregar_servico(repo, visita, servico_id)
+    return ServicoFotoListResponse(
+        fotos_defeito=[ServicoFotoResponse.model_validate(f) for f in servico.fotos if f.tipo == "defeito"],
+        fotos_conserto=[ServicoFotoResponse.model_validate(f) for f in servico.fotos if f.tipo == "conserto"])
+
+
+# =====================================================================================================================
+# Equipamentos da OS (6.13): admin escreve; técnico atribuído só lê
+# =====================================================================================================================
+
+@router.get("/{chamado_id}/equipamentos", response_model=List[OsEquipamento])
+def listar_equipamentos_da_os(
+        chamado_id: int,
+        repo: SQLRepository = Depends(get_repo),
+        current_user: dict = Depends(get_current_active_user),
+):
+    """Equipamentos (modelo + série) da OS, somente leitura. Técnico só da própria OS (403 nas demais)."""
+    carregar_chamado(repo, chamado_id, current_user)
+    return [OsEquipamento.model_validate(e) for e in repo.get_os_equipamentos(chamado_id)]
+
+
+@router.post("/{chamado_id}/equipamentos", response_model=OsEquipamento, status_code=201)
+def vincular_equipamento(
+        chamado_id: int,
+        payload: OsEquipamentoCreate,
+        repo: SQLRepository = Depends(get_repo),
+        admin_user: dict = Depends(require_admin_role),
+):
+    """Vincula modelo ativo + série à OS (RN-45: até o início do atendimento; nunca em OS Finalizada/cancelada)."""
+    chamado = carregar_chamado(repo, chamado_id, admin_user, permitir_cancelado=True)
+    equipamento = equipamento_service.vincular(repo, chamado, payload.id_equipamento_modelo, payload.numero_serie,
+                                               admin_user)
+    return OsEquipamento.model_validate(equipamento)
+
+
+@router.patch("/{chamado_id}/equipamentos/{os_equipamento_id}", response_model=OsEquipamento)
+def atualizar_equipamento_da_os(
+        chamado_id: int,
+        os_equipamento_id: int,
+        payload: OsEquipamentoUpdate,
+        repo: SQLRepository = Depends(get_repo),
+        admin_user: dict = Depends(require_admin_role),
+):
+    dados = payload.model_dump(exclude_unset=True)
+    if not dados:
+        raise HTTPException(status_code=400, detail="Nenhum dado para atualizar foi fornecido.")
+    chamado = carregar_chamado(repo, chamado_id, admin_user, permitir_cancelado=True)
+    equipamento = equipamento_service.atualizar_vinculo(repo, chamado, os_equipamento_id, dados, admin_user)
+    return OsEquipamento.model_validate(equipamento)
+
+
+@router.delete("/{chamado_id}/equipamentos/{os_equipamento_id}", status_code=204)
+def remover_equipamento_da_os(
+        chamado_id: int,
+        os_equipamento_id: int,
+        repo: SQLRepository = Depends(get_repo),
+        admin_user: dict = Depends(require_admin_role),
+):
+    chamado = carregar_chamado(repo, chamado_id, admin_user, permitir_cancelado=True)
+    equipamento_service.remover_vinculo(repo, chamado, os_equipamento_id, admin_user)
+    return Response(status_code=204)

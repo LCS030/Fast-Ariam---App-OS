@@ -1,5 +1,15 @@
-from pydantic import BaseModel
+from typing import Literal
 
-class IniciarDeslocamentoPayload(BaseModel):
-    tipo: str
-    km_inicio: int
+from pydantic import Field
+
+from .base_schemas import PayloadComHorario
+
+
+class IniciarDeslocamentoPayload(PayloadComHorario):
+    tipo: Literal["ida", "volta"]
+    km_inicio: int = Field(..., ge=0)
+
+
+class FinalizarDeslocamentoPayload(PayloadComHorario):
+    tipo: Literal["ida", "volta"]
+    km_fim: int = Field(..., ge=0)

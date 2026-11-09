@@ -22,7 +22,9 @@ class Tecnico(Base):
     conta = Column(String(50))
     pix = Column(String(100))
 
-    chamados = relationship("OrdemServico", back_populates="tecnico")
+    # ordem_servico tem duas FKs para tecnico (id_tecnico_atribuido e cancelado_por): desambiguar.
+    chamados = relationship("OrdemServico", back_populates="tecnico",
+                            foreign_keys="OrdemServico.id_tecnico_atribuido")
 
     @property
     def dados_bancarios(self):

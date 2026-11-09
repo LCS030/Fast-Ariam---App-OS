@@ -36,6 +36,7 @@ Exemplo (PowerShell):
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import random
 import secrets
@@ -143,6 +144,12 @@ def http(method: str, path: str, token: Optional[str] = None, **kw: Any) -> Resp
     headers = dict(kw.pop("headers", {}) or {})
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    arquivos = kw.get("files")
+    if isinstance(arquivos, dict) and isinstance(arquivos.get("file"), tuple):
+        # SHA256_ORIGEM_OBRIGATORIO=true: todo upload leva o SHA-256 dos bytes (como faz o app).
+        dados = dict(kw.get("data") or {})
+        dados.setdefault("sha256", hashlib.sha256(arquivos["file"][1]).hexdigest())
+        kw["data"] = dados
     try:
         return Resp(client.request(method, path, headers=headers, **kw))
     except httpx.HTTPError as exc:

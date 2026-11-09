@@ -102,7 +102,7 @@ def main() -> int:
             return 1
 
         if alvo is None:
-            if db.query(Tecnico).filter(Tecnico.cnpj == args.cnpj).first():
+            if db.query(Tecnico).filter(Tecnico.cnpj_idx == Tecnico.indice_do_cnpj(args.cnpj)).first():
                 print(f"ERRO: o CNPJ {args.cnpj} ja esta em uso (UNIQUE). Informe outro com --cnpj.")
                 return 1
             db.add(Tecnico(nome="Administrador", cpf=CPF_MARCADOR, cnpj=args.cnpj, email=email,

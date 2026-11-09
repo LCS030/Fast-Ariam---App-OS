@@ -2,12 +2,14 @@
 
 | Campo | Valor |
 |---|---|
-| Versão | 0.5 (regra de equipamento da OS de 08/11/2026 incorporada sobre a v0.4 de 07/11/2026) |
+| Versão | 0.6 (confidencialidade e integridade de 08/11/2026 incorporadas sobre a v0.5 de 08/11/2026 e a v0.4 de 07/11/2026) |
 | Data | 08/11/2026 |
 | Documento de requisitos | `PRD-Fast-Ariam.md` v0.5 (referências RF-xx, RN-xx, PR-xx, CA-xx) |
 | Repositórios | Backend e app: `LCS030/fast-ariam---app-os` · Painel: `Jonathan-Ferreira-Berdusco/Fast-IA-Studio` |
 
 > **v0.5 (08/11/2026).** **Situação da implementação (08/11/2026):** backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 346 testes automatizados em SQLite e um smoke ponta a ponta (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), mas o backend novo ainda NÃO foi executado contra esse PostgreSQL; painel web (`web/`) e app do técnico (`frontend/`, com outbox offline) implementados, `tsc` sem erros, mas NÃO executados em navegador/aparelho nem contra o backend; nenhum controle SEG-xx foi verificado em PostgreSQL. As seções marcadas "v0.5" (0.2, 3, 4.5, 4.8, 4.9, 5, 6.5 a 6.7, 6.12, 6.13, 7, 8, 10, 11 e 12) descrevem o contrato da regra de equipamento da OS: catálogo de modelos, vínculo modelo + número de série na OS e travas de foto de defeito e de conserto. As interpretações do detalhamento foram confirmadas pelo responsável em 08/11/2026 (PRD 11.1.2); também foram confirmados, em 08/11/2026, o **recálculo do custo** na correção de materiais pós-finalização (com os valores congelados, 6.13) e que **somente fotos e materiais** são editáveis após a finalização. Não restam pontos em aberto na regra de equipamento.
+
+> **v0.6 (08/11/2026) — Confidencialidade e Integridade.** **Situação da implementação:** backend com **414 testes automatizados em SQLite** passando (os 346 da v0.5 mais 68 novos, em `tests/chamados/test_cifragem_integridade.py`, `test_storage_privado.py` e `test_migracao_storage.py`); painel (`web/`) e app (`frontend/`) com `tsc` sem erros, **sem execução em navegador nem em aparelho**. As migrações `0010` (hash e selo), `0011` (cifragem) e `0012` (`cnpj_idx` obrigatório) foram **aplicadas no Supabase real em 08/11/2026 pelo MCP**, depois de um backup íntegro (`scripts/backup_banco.py`), e os dados existentes foram cifrados por `scripts/cifrar_dados_existentes.py`. O resultado foi **conferido por consulta SQL** (nenhum CPF/CNPJ/telefone/dado bancário em claro; índices cegos preenchidos; 2 assinaturas `.enc`) e por uma **leitura somente-leitura do backend novo contra o banco real** (decifragem e recálculo do índice cego corretos; as 2 OS existentes aparecem como `sem_selo`). **Mesmo assim, a API completa não foi exercitada contra o PostgreSQL** e nenhum controle SEG-xx é tratado como *verificado*. Seção nova **8.1** (decisões criptográficas, chaves, matriz dos quatro pilares, riscos residuais), SEG-22 a SEG-28, testes T-60 a T-99 (11.2) e T-100 a T-112 (11.3) e backlog 31 a 36. Sobre a assinatura: **a imagem da assinatura não é assinatura digital e não fornece não repúdio criptográfico** (8.1).
 
 > Este documento define o contrato técnico entre banco, API, painel e app. É a referência de implementação e testes e deve permanecer sincronizado com o PRD v0.5. O código atual é evidência de implementação, não substitui o contrato. Não há decisão de negócio bloqueante em aberto: a RN-08a (desativação de técnico) foi resolvida em 07/11/2026. Itens marcados "implementado" referem-se ao backend e foram exercitados **apenas por testes automatizados em SQLite**; nada foi verificado contra PostgreSQL/Supabase nem validado pelo QA (ver seção 8).
 
@@ -81,6 +83,21 @@ As demais decisões previamente confirmadas permanecem válidas: motivos de paus
 | Rejeições offline `FOTO_DEFEITO_AUSENTE` e `CONSERTO_INCOMPLETO` | Contrato-alvo de `/api/sync` (ainda não implementado) | 6.12 |
 | Migração em fases (expandir, backfill, contrair) com `is_legado` | Dev e produção compartilham o mesmo banco (risco aceito): ensaiar em dump restaurado | 4.9 |
 
+### 0.3 Decisões técnicas da v0.6 — Confidencialidade e Integridade (08/11/2026)
+
+Decisões tomadas pelo responsável do projeto em 08/11/2026 (os agentes propuseram; o responsável aprovou e implementou o plano). Detalhes e justificativas na seção 8.1.
+
+| Decisão | Impacto técnico | Seção |
+|---|---|---|
+| **D1** Selo de integridade **por visita**, gravado em `finalizar-atendimento`; cobre o que fica fechado nesse momento; correção administrativa pós-finalização **resseala** a visita e audita | `visita.selo_integridade` / `selo_versao`; `GET /api/chamados/{id}/verificar-integridade` | 4.4, 6.6, 8.1 |
+| **D2** Hash das fotos de odômetro/deslocamento em uma coluna JSON da visita | `visita.arquivos_sha256` | 4.4 |
+| **D3** O servidor **sempre** calcula e grava o SHA-256; o hash calculado no aparelho é **obrigatório** (`SHA256_ORIGEM_OBRIGATORIO=true`, app ainda não distribuído) | Todo upload exige `sha256`; sem ele, 422 `HASH_AUSENTE` | 6.8, 6.12 |
+| **D4** Visitas finalizadas **antes** do selo ficam `sem_selo`; não há selagem retroativa | Estado `sem_selo` não é adulteração | 8.1 |
+| **D5** Campos cifrados: CPF do cliente na visita e CPF, CNPJ, telefone e dados bancários/PIX do **técnico**. Telefones do **cliente** (comerciais) e **e-mail** ficam em claro | `TextoCifrado`; e-mail é a chave de login | 4.1, 4.4, 8.1 |
+| **D6** Formato `enc1:<base64(nonce‖ciphertext‖tag)>`, AAD = `fast-ariam-v1|<tabela.coluna>` | Migração idempotente, rotação futura (`enc2:`), valor não reutilizável em outra coluna | 8.1 |
+| Assinatura em disco **cifrada** (`.enc`) e servida **somente** por rota autenticada; `/static/assinaturas` deixa de existir | SEG-09 parcial: **fotos e comprovantes também em bucket privado** (seção 9) | 6.6, 9 |
+| TLS: `sslmode` obrigatório até o banco, HSTS em produção, Android sem tráfego HTTP puro por padrão | `DB_SSLMODE`, `app.config.ts` | 2, 8.1 |
+
 ## 1. Arquitetura
 
 ```
@@ -144,9 +161,16 @@ As demais decisões previamente confirmadas permanecem válidas: motivos de paus
 | `CORS_ORIGINS` | Sim em produção | — | Origens permitidas, separadas por vírgula (SEG-03). `*` é recusado (a API usa credenciais). Sem a variável, só fora de produção valem as origens locais de desenvolvimento. **Implementado** |
 | `ENV` | Não | `development` | `development`, `test` ou `production`. Em `production` ativa as travas de CORS, `SECRET_KEY` e `AUTO_CREATE_TABLES`, e bloqueia `resetar_banco.py` |
 | `AUTO_CREATE_TABLES` | Não | desligado | Liga `create_all` no startup; só dev/teste. Habilitar com `ENV=production` impede o início. O schema de produção depende de migrações (Alembic, pendente) |
-| `SUPABASE_URL` | Sim, ao migrar para Storage | — | URL do projeto Supabase (seção 9) |
-| `SUPABASE_SERVICE_KEY` | Sim, ao migrar para Storage | — | Chave de serviço. Só no backend, nunca nos fronts |
-| `STORAGE_BUCKET` | Não | `fast-ariam-privado` | Bucket privado dos arquivos |
+| `DATA_ENCRYPTION_KEY` | **Sim, sempre** | — | AES-256-GCM dos campos sensíveis e da assinatura em disco. Base64 de **exatamente 32 bytes**. Sem ela (ou inválida) a aplicação **não inicia**. Nunca reutilizar (8.1) |
+| `INDEX_KEY` | **Sim, sempre** | — | HMAC-SHA256 do índice cego (`tecnico.cnpj_idx`). Base64 de 32 bytes, **diferente** das demais |
+| `INTEGRITY_KEY` | **Sim, sempre** | — | HMAC-SHA256 do selo de integridade da visita. Base64 de 32 bytes, **diferente** das demais |
+| `ENCRYPTION_ALLOW_LEGACY_PLAINTEXT` | Não | **`false`** | Modo de transição da cifragem. Padrão `false`: valor sem o prefixo `enc1:` em coluna cifrada é **erro** (tratado como adulteração; senão quem gravasse um CPF em claro direto no banco seria aceito sem alarme). `true` aceita **ler** valor em claro e só deve ser usado, fora de produção, durante a migração (`cifrar_dados_existentes.py`). **Com `ENV=production`, `true` é recusado e a aplicação não inicia** |
+| `SHA256_ORIGEM_OBRIGATORIO` | Não | **`true`** | `true` (padrão, decisão do responsável em 08/11/2026: o app ainda não foi distribuído) exige o campo `sha256` em **todo** upload (app e painel); `false` aceita sem ele (o servidor grava o hash que calculou) e só deve ser usado se houver app antigo, sem envio de hash, em uso. O servidor **sempre** calcula e grava o seu |
+| `DB_SSLMODE` | Não | `require` | TLS até o PostgreSQL: `require`, `verify-ca` ou `verify-full`. `disable`/`allow`/`prefer` só fora de produção. Ignorado em SQLite |
+| `DB_SSLROOTCERT` | Não | — | Caminho do certificado raiz do provedor (para `verify-ca`/`verify-full`) |
+| `SUPABASE_URL` | Sim em produção; junto com a chave | — | URL do projeto Supabase (`https://...`). **Definir junto com `SUPABASE_SERVICE_KEY`** (uma sem a outra impede a inicialização). Sem as duas: disco local (só dev/teste; recusado em `ENV=production`) |
+| `SUPABASE_SERVICE_KEY` | Sim em produção; junto com a URL | — | Chave de serviço (**ignora o RLS**). Só no backend: nunca em painel, app, log ou Git; trocar se vazar |
+| `STORAGE_BUCKET` | Não | `fast-ariam-privado` | Bucket privado dos arquivos (`fast-ariam-privado-dev` fora de produção, pois dev e produção compartilham o projeto) |
 
 > **Ambiente (decisão do PO, 07/11/2026, risco aceito):** nesta fase desenvolvimento e produção usam o **mesmo projeto Supabase**. Consequência: testes, `resetar_banco.py --allow-remote` e migrações de desenvolvimento podem atingir dados reais, o que enfraquece as travas SEG-05 e SEG-12. A ressalva de Segurança permanece registrada na seção 8 e o risco deve ser reavaliado antes do uso em produção plena.
 
@@ -203,16 +227,19 @@ Tabelas e colunas conforme os modelos SQLAlchemy (`backend/app/models`). Chaves 
 |---|---|---|
 | id_tecnico | INTEGER | PK, autoincrement |
 | nome | VARCHAR(100) | NOT NULL |
-| cnpj | VARCHAR(18) | NOT NULL, UNIQUE. Armazenado com máscara canônica `00.000.000/0000-00` (18 caracteres) |
-| cpf | VARCHAR(14) | NOT NULL. Armazenado com máscara canônica `000.000.000-00` (14 caracteres) |
+| cnpj | **TEXT (cifrado, v0.6)** | NOT NULL. Máscara canônica `00.000.000/0000-00` **antes de cifrar**. Sem UNIQUE: a unicidade é de `cnpj_idx` |
+| cnpj_idx | VARCHAR(64) | NOT NULL, UNIQUE (`uq_tecnico_cnpj_idx`). **Índice cego** `HMAC-SHA256(INDEX_KEY, "tecnico.cnpj\|<14 dígitos>")` em hex; ignora a máscara. Mantido automaticamente pelo model (v0.6) |
+| cpf | **TEXT (cifrado, v0.6)** | NOT NULL. Máscara canônica `000.000.000-00` (14 caracteres) **antes de cifrar** |
 | inscricao_estadual | VARCHAR(50) | |
 | email | VARCHAR(100) | NOT NULL, UNIQUE |
-| telefone | VARCHAR(20) | |
+| telefone | **TEXT (cifrado, v0.6)** | |
 | password_hash | VARCHAR(100) | NOT NULL |
 | role | ENUM(admin, tecnico) | NOT NULL, default `tecnico` |
 | is_active | BOOLEAN | NOT NULL, default true |
-| banco, agencia, conta | VARCHAR(100 / 50 / 50) | |
-| pix | VARCHAR(100) | |
+| banco, agencia, conta | **TEXT (cifrados, v0.6)** | |
+| pix | **TEXT (cifrado, v0.6)** | |
+
+> **v0.6:** colunas marcadas "cifrado" guardam `enc1:<base64>` (8.1); a API continua recebendo e devolvendo o valor em claro (decifrado pelo tipo `TextoCifrado`). O e-mail permanece em claro (chave de login).
 
 ### 4.2 `cliente`
 
@@ -268,6 +295,12 @@ Tabelas e colunas conforme os modelos SQLAlchemy (`backend/app/models`). Chaves 
 | pendencia | TEXT | |
 | odometro_inicio_url, odometro_fim_url | VARCHAR(255) | |
 | foto_inicio_ida_url, foto_fim_ida_url, foto_inicio_volta_url, foto_fim_volta_url | VARCHAR(255) | |
+| documento_cliente | **TEXT (cifrado, v0.6)** | CPF do cliente (11 dígitos **antes de cifrar**, validado no backend). O `CHECK ck_visita_documento_cliente` foi **removido** (não se aplica a texto cifrado) |
+| assinatura_url | VARCHAR(255) | Referência `/static/assinaturas/<uuid>.enc`: **identificador, não URL pública** (a rota não existe); a imagem sai por `GET .../assinatura` (6.6) |
+| assinatura_sha256 | VARCHAR(64) | *(v0.6)* SHA-256 dos bytes da assinatura **antes de cifrar**. `CHECK` 64 hex minúsculos |
+| arquivos_sha256 | JSONB | *(v0.6, D2)* `{campo_url: sha256}` das fotos de odômetro/deslocamento (`foto_*_url`, `odometro_*_url`) |
+| selo_integridade | VARCHAR(64) | *(v0.6, D1)* `HMAC-SHA256(INTEGRITY_KEY, JSON canônico)` em hex. NULL = visita sem selo (finalizada antes da v0.6 ou ainda aberta) |
+| selo_versao | INTEGER | *(v0.6)* Versão do esquema canônico do selo (hoje `1`) |
 
 ### 4.5 `servico_equipamento`, `servico_defeito`, `servico_foto`, `material`
 
@@ -275,14 +308,14 @@ Tabelas e colunas conforme os modelos SQLAlchemy (`backend/app/models`). Chaves 
 |---|---|---|
 | servico_equipamento | id_servico PK, id_visita → visita, **id_os_equipamento → os_equipamento (RESTRICT)** *(v0.5)*, **conserto_salvo_em TIMESTAMPTZ** *(v0.5; preenchido só por "Salvar conserto")*, **is_legado BOOLEAN NOT NULL** *(v0.5)*, numero_serie_atendido VARCHAR(100) *(legado; era NOT NULL)*, nome_equipamento VARCHAR(100) *(legado)*, defeito_outros_descricao TEXT, vazamento_ponto_descricao TEXT | **v0.5:** um registro por equipamento da OS **em cada visita**, criado pelo servidor (6.5.3). `numero_serie_atendido` e `nome_equipamento` são legado, somente leitura, e não são aceitos de nenhum cliente; modelo e série exibidos vêm do vínculo. `UNIQUE(id_visita, id_os_equipamento)`; `CHECK (is_legado OR id_os_equipamento IS NOT NULL)` |
 | servico_defeito | id_defeito PK, id_servico → servico_equipamento (CASCADE), tipo VARCHAR(50), defeito VARCHAR(100) | `tipo` ∈ principal, refrigeracao, compressor, vazamento, outros, iluminacao, estrutura |
-| servico_foto | id_foto PK, id_servico → servico_equipamento (CASCADE), tipo VARCHAR(20), url VARCHAR(255) | `tipo` ∈ defeito, conserto |
+| servico_foto | id_foto PK, id_servico → servico_equipamento (CASCADE), tipo VARCHAR(20), url VARCHAR(255), **sha256 VARCHAR(64)** *(v0.6)* | `tipo` ∈ defeito, conserto. `sha256` = hash dos bytes recebidos, calculado pelo servidor |
 | material | id_material PK, id_servico → servico_equipamento, nome VARCHAR(100), quantidade INTEGER, valor NUMERIC(10,2) | |
 
 ### 4.6 `comprovante` e `pausa`
 
 | Tabela | Colunas principais | Observação |
 |---|---|---|
-| comprovante | id_comprovante PK, id_visita → visita (CASCADE), tipo VARCHAR(50), url VARCHAR(255) | `tipo` ∈ pedagio, frete |
+| comprovante | id_comprovante PK, id_visita → visita (CASCADE), tipo VARCHAR(50), url VARCHAR(255), **sha256 VARCHAR(64)** *(v0.6)* | `tipo` ∈ pedagio, frete |
 | pausa | id_pausa PK, visita_id → visita, motivo VARCHAR(100) NOT NULL, descricao TEXT, criado_em TIMESTAMPTZ, por_tecnico_id → tecnico, is_ativa BOOLEAN NOT NULL default true | Pausa ativa é `is_ativa = true` |
 
 **Relações:** cliente 1—N ordem_servico · tecnico 1—N ordem_servico · ordem_servico 1—N visita · **ordem_servico 1—N os_equipamento N—1 equipamento_modelo** *(v0.5)* · visita 1—N servico_equipamento **N—1 os_equipamento** *(v0.5)* · servico_equipamento 1—N (material, servico_defeito, servico_foto) · visita 1—N (comprovante, pausa).
@@ -497,6 +530,8 @@ Base: `/api`. Autenticação: `Authorization: Bearer <token>`. Erros seguem o pa
 | POST | `/api/auth/login` | público | `application/x-www-form-urlencoded`: `username` (e-mail), `password` | `{access_token, token_type: "bearer"}` |
 | GET | `/api/auth/me` | autenticado | — | `{id_tecnico, nome, email, role, is_active}`. **Implementado (PR-06).** Nunca inclui dados bancários, CPF/CNPJ nem telefone (SEG-10) |
 
+> **Natureza do JWT (v0.6):** o token é assinado com **HS256, um segredo simétrico compartilhado** (`SECRET_KEY`). Isso autentica o emissor para quem conhece o segredo; **não é assinatura assimétrica** (par chave pública/privada). Migrar para RS256/EdDSA exigiria proposta própria (`kid`, rotação, período de transição) e aprovação do PO; não foi feito. O certificado TLS autentica o **servidor**; o JWT autentica o **portador do token**; as senhas usam bcrypt. São controles distintos.
+
 Claims do JWT: `sub` (e-mail), `user_id`, `role`, `exp`. A cada requisição o usuário é relido no banco: inexistente, inativo ou com e-mail diferente do `sub` recebe 401 com mensagem única, e o papel efetivo vem do banco, não do token (SEG-01, implementado).
 
 ### 6.3 Técnicos
@@ -606,8 +641,10 @@ Obrigatórios: `nome`, `cnpj`, `cpf`, `email`, `telefone`, `dados_bancarios` (co
 | POST | `/api/chamados/{id}/visitas/{v}/upload_file` | autenticado | multipart: `file`, `file_type` | `Visita` | `file_type` ∈ odometro_inicio_url, odometro_fim_url, foto_*_url (simples), comprovante_pedagio_urls, comprovante_frete_urls (listas) |
 | POST | `/api/chamados/{id}/visitas/{v}/iniciar-atendimento` | técnico | `{ocorrido_em?}` (corpo opcional) | `Visita` | Grava `atendimento_inicio_em`. Muda OS para Em Atendimento. Exige o fim da ida (400) e OS `Agendado` (409) — implementado (RN-17, PR-36). **v0.5 (não implementado): exige ainda a OS com equipamento e ≥ 1 foto de defeito por equipamento na visita; senão 409 com a lista de pendentes (TR-12, RN-43)** |
 | POST | `/api/chamados/{id}/visitas/{v}/pausar` | técnico ou admin | `{motivo: str, descricao?: str, ocorrido_em?}` | `{status, id_pausa, visita_id, motivo, descricao, criado_em, is_ativa}` | RN-26, RN-29, RN-30. Muda OS para Pausado. `motivo` = "Outro" exige `descricao` |
-| POST | `/api/chamados/{id}/visitas/{v}/finalizar-atendimento` | técnico | `{nome_cliente, documento_cliente, assinatura_base64, ocorrido_em?}` | `{status, assinatura_url}` | RN-22, RN-23. `documento_cliente` é CPF válido. Grava assinatura, nome e CPF **na visita**, não na OS (PR-10, PR-35). **v0.5 (não implementado): antes de gravar a assinatura exige conserto salvo e ≥ 1 foto de conserto por equipamento da OS na visita; senão 409 com pendências e nada é gravado (TR-13, RN-44)** |
+| POST | `/api/chamados/{id}/visitas/{v}/finalizar-atendimento` | técnico | `{nome_cliente, documento_cliente, assinatura_base64, assinatura_sha256?, ocorrido_em?}` | `{status, assinatura_url}` | RN-22, RN-23. `documento_cliente` é CPF válido. Grava assinatura, nome e CPF **na visita**, não na OS (PR-10, PR-35). **v0.5 (não implementado): antes de gravar a assinatura exige conserto salvo e ≥ 1 foto de conserto por equipamento da OS na visita; senão 409 com pendências e nada é gravado (TR-13, RN-44)** |
 | POST | `/api/chamados/{id}/visitas/{v}/finalizar-dados` | técnico | — | **410 Gone** | **Descontinuado (implementado).** Nome, CPF e assinatura vão somente em `finalizar-atendimento` |
+| GET | `/api/chamados/{id}/visitas/{v}/assinatura` | admin ou técnico atribuído | — | Imagem (`image/png` ou `image/jpeg`), `Cache-Control: private, no-store`, `nosniff` | **Implementado (v0.6, teste SQLite).** Decifra a assinatura em memória. Mesma autorização por OS de `carregar_chamado` (técnico de outra OS → 403; sem token → 401). Sem assinatura/arquivo → 404. `.enc` adulterado → 500 "Assinatura ilegível" (e log de erro). Assinaturas antigas em claro ainda são lidas até a conversão (`cifrar_dados_existentes.py`) |
+| GET | `/api/chamados/{id}/verificar-integridade` | admin | — | `{id_os, estado, visitas:[{id_visita, estado, motivos[]}]}` | **Implementado (v0.6, teste SQLite).** `estado` por visita: `integro`, `adulterado`, `sem_selo` ou `nao_finalizada`; da OS: `adulterado` se qualquer visita estiver, senão `integro`, `sem_selo` ou `nao_finalizada`. Recalcula o selo (HMAC, `compare_digest`) **e** re-hasheia os arquivos em disco. `motivos`: `selo_divergente`, `versao_do_selo_desconhecida`, `arquivo_divergente:<campo>`, `arquivo_ausente:<campo>`, `arquivo_adulterado:<campo>`. Somente leitura (além da auditoria `INTEGRIDADE_VERIFICADA`) |
 
 **6.6.1 `IniciarDeslocamento` (exemplo)**
 
@@ -738,7 +775,10 @@ Exemplo de **entrada** v0.5 (o exemplo anterior, com `numero_serie_atendido` e `
 - Tamanho máximo **15 MB por arquivo de imagem**: a API lê em blocos e aborta com **413** ao passar do limite, sem persistir arquivo parcial (também vale para a assinatura em base64). Implementado na API; no app e na configuração do bucket permanece pendente.
 - Resolução mínima **apenas para fotos de conserto**: equivalente a **960 × 1280 em qualquer orientação** (RN-21): **menor lado ≥ 960 e maior lado ≥ 1280** (aceitam-se 960 × 1280 e 1280 × 960; recusam-se 1000 × 1200 e 900 × 1500). O app valida na captura e o servidor valida de novo ao receber (400, "Resolução insuficiente"). Fotos de defeito, odômetro e deslocamento não têm mínimo.
 - **Upload em OS `Finalizado` → 409** (OS finalizada não aceita novos arquivos). *(v0.5, exceção única)* O **administrador** pode enviar/substituir foto comprobatória de serviço (defeito/conserto) em OS `Finalizado` não cancelada, pelas rotas e regras de 6.13 (RN-49); o técnico continua recebendo 409.
-- `/static` passa a responder com `X-Content-Type-Options: nosniff`. É mitigação, não substitui o acesso autorizado do SEG-09 (seção 9).
+- `/static` passa a responder com `X-Content-Type-Options: nosniff`. É mitigação, não substitui o acesso autorizado do SEG-09 (seção 9). **v0.6:** somente `/static/uploads` é servido; `/static/assinaturas` **não existe** (404).
+- **Integridade (v0.6, SEG-24).** Todo upload (`upload-deslocamento`, `upload_file`, `servicos/{s}/upload-foto`, `/api/sync/arquivos`) aceita o campo multipart **`sha256`** (64 hex): o SHA-256 dos bytes **calculado no aparelho/navegador**. O servidor lê o corpo, recalcula e compara em tempo constante **antes** de qualquer outra análise: divergência → **422** `{detail, codigo:"HASH_DIVERGENTE"}` e **nada é gravado**; formato inválido → 422 `HASH_INVALIDO`; ausente com `SHA256_ORIGEM_OBRIGATORIO=true` → 422 `HASH_AUSENTE`. O servidor grava **sempre** o hash que ele mesmo calculou (`servico_foto.sha256`, `comprovante.sha256`, `sync_arquivo.sha256`, `visita.arquivos_sha256`, `visita.assinatura_sha256`). Para a assinatura em base64 (`finalizar-atendimento`) o campo é `assinatura_sha256`, conferido contra os bytes decodificados.
+- O corpo de erro de regra (`ErroRegra`) passa a incluir **`codigo`** estável além de `detail`, para o cliente decidir se repete (ex.: `HASH_DIVERGENTE`).
+- **Assinatura (v0.6, SEG-26).** Gravada **cifrada** (AES-256-GCM, AAD `fast-ariam-v1|arquivo.assinatura`) em `static/assinaturas/<uuid>.enc`. O hash é dos bytes originais (antes de cifrar). Leitura apenas por `GET .../assinatura` (6.6).
 - Nome do arquivo gerado no servidor: `{prefixo}_{uuid8}{ext}`. Prefixo inclui `chamado_{id}_visita_{id}_{campo}`.
 
 ### 6.9 Cancelamento de OS
@@ -807,7 +847,7 @@ Não implementar `GET/PUT /api/tecnicos/me/configuracao-custo` nem `GET /api/tec
 
 | Método | Rota | Entrada | Saída |
 |---|---|---|---|
-| POST | `/api/sync/arquivos` | multipart: `client_file_id` (UUID), `file`, `tipo_arquivo`, `id_os`, `id_visita` | `{client_file_id, url, resultado}` (`aplicado` ou `duplicado`) |
+| POST | `/api/sync/arquivos` | multipart: `client_file_id` (UUID), `file`, `tipo_arquivo`, `id_os`, `id_visita`, **`sha256`** *(v0.6; obrigatório com `SHA256_ORIGEM_OBRIGATORIO=true`)* | `{client_file_id, url, resultado, sha256}` (`aplicado` ou `duplicado`; `sha256` = hash que o servidor gravou) |
 | POST | `/api/sync/eventos` | lote de eventos (abaixo) | `{"resultados": [ {client_event_id, resultado, codigo, detalhe} ]}`, na ordem recebida |
 | GET | `/api/sync/minhas-os?desde=<iso>` | — | `{sincronizado_em, os: [...]}` para o cache local |
 
@@ -818,6 +858,7 @@ Não implementar `GET/PUT /api/tecnicos/me/configuracao-custo` nem `GET /api/tec
 - A OS/visita informadas devem ser do técnico (OS de outro técnico → 403; inexistente → 404). OS cancelada: o arquivo é aceito e guardado, e o evento que o referencia é rejeitado com `OS_CANCELADA`; OS Finalizada → 409.
 - O servidor **guarda o arquivo e o associa ao `client_file_id`** (tabela `sync_arquivo`); a ligação ao registro final (foto do serviço, odômetro, comprovante, assinatura) só ocorre quando o evento que o referencia (`foto_ref` / `assinatura_ref`) é aplicado. Reenviar o mesmo `client_file_id` devolve a `url` já gravada com `resultado = "duplicado"`, sem novo arquivo.
 - **O app envia os arquivos ANTES dos eventos que os referenciam** (SY-08).
+- **Integridade (v0.6).** O app calcula o SHA-256 **na captura** (quando o arquivo entra na fila, não no envio) e o guarda no SQLite (`outbox_arquivos.sha256`, schema v2); assim a verificação cobre também as horas offline. Arquivos já enfileirados por versão antiga do app (sem hash) têm o hash calculado no envio. O servidor recalcula; divergência → 422 `HASH_DIVERGENTE`, e o app **repete o envio** (até 5 tentativas; o arquivo nunca é apagado) antes de marcá-lo como `rejeitado` com o motivo. Reenvio do **mesmo `client_file_id` com hash diferente** → **409 `ARQUIVO_DIVERGENTE`** (nunca tratado como `duplicado`). `visita.assinatura_sha256` e os demais hashes são copiados do `sync_arquivo` quando o evento que o referencia é aplicado.
 
 **Lote de eventos**
 
@@ -1006,7 +1047,7 @@ A edição do admin volta a ser possível **somente com a OS `Finalizado` e não
 | SEG-06 | Remover `print` de depuração e registrar em logger com nível | **Implementado (inspeção do código; sem teste dedicado)** |
 | SEG-07 | JWT de acesso com expiração configurável; sem refresh token. App mantém sessão offline local por até 24 h | **Parcial.** Expiração do JWT e `SECRET_KEY` ≥ 32 caracteres em produção implementadas (teste SQLite). Sessão offline de 24 h, outbox e novo login online no app: **pendentes** |
 | SEG-08 | Upload: validar MIME real JPEG/PNG, tamanho máximo de 15 MB e resolução de conserto | **Parcial.** API implementada (formato real 422, 15 MB 413, conserto 400, `nosniff` em `/static`; teste SQLite). Validação no app e no bucket: **pendente** |
-| SEG-09 | Assinatura e fotos acessíveis apenas a quem tem permissão sobre a OS | **Pendente.** `/static/...` continua público; depende do Storage privado (seção 9) |
+| SEG-09 | Assinatura e fotos acessíveis apenas a quem tem permissão sobre a OS | **Implementado e migrado; não verificado de ponta a ponta.** `/static` removido; assinaturas, fotos, comprovantes e fotos de deslocamento só por rota autenticada com autorização por OS e checagem de que o arquivo pertence à OS (testes SQLite); buckets privados no Supabase real, sem políticas; `testar_storage.py` 6/6 e 17 arquivos migrados e conferidos contra o Supabase real. **Pendentes:** exercitar o painel em navegador; decidir a remoção das cópias locais (`--apagar-locais`); fotos e comprovantes sem cifragem da aplicação (só a da plataforma) |
 | SEG-10 | Dados bancários nunca retornados ao técnico que não é admin | **Parcial.** `/auth/me` não devolve dados bancários, CPF/CNPJ nem telefone (teste SQLite); revisão das demais respostas pelo Security pendente. Só o administrador altera dados bancários |
 | SEG-11 | Técnico lê apenas clientes das próprias OS | **Implementado (teste SQLite).** Técnico fora das próprias OS → 403 |
 | SEG-12 | Chave de serviço do Supabase só no backend. RLS ativado nas tabelas, sem políticas para o papel `anon` | **Pendente.** Agravado pelo projeto Supabase compartilhado entre dev e produção |
@@ -1019,16 +1060,73 @@ A edição do admin volta a ser possível **somente com a OS `Finalizado` e não
 | SEG-19 | Separação de ambientes dev/produção | **Risco aceito pelo PO (07/11/2026)** com ressalva de SEG: mesmo projeto Supabase nesta fase; reavaliar antes do uso em produção plena |
 | SEG-20 | RLS ativado e `REVOKE` para `anon`/`authenticated` nas tabelas `equipamento_modelo` e `os_equipamento` (e sequences); `get_advisors` após a migração | **Pendente.** O SQL está na `0007` (REVOKE sempre; RLS condicional), mas a migração **não foi aplicada**; agravado pelo projeto compartilhado dev/produção |
 | SEG-21 | Autorização por objeto nos equipamentos: `id_os_equipamento`, `id_servico` e fotos validados contra a OS/visita da URL e contra o técnico atribuído; técnico sem escrita em catálogo/vínculo; sem IDOR | **Implementado (teste SQLite)** — T-43/T-44. Não verificado em PostgreSQL nem revisado pelo Security |
+| SEG-22 | Confidencialidade em repouso: campos sensíveis cifrados na aplicação (AES-256-GCM): `visita.documento_cliente`; `tecnico.cpf/cnpj/telefone/banco/agencia/conta/pix` | **Implementado (teste SQLite).** Migrações `0011`/`0012` e cifragem dos dados existentes **aplicadas no Supabase real em 08/11/2026** e conferidas por consulta (0 valores em claro). Adulteração de valor cifrado → erro de decifragem (teste). Padrão de transição seguro (`ENCRYPTION_ALLOW_LEGACY_PLAINTEXT=false`; ligar em produção é recusado). **Limite:** AAD por coluna, não por linha (8.1). Não verificado pelo Security nem com a API completa em PostgreSQL |
+| SEG-23 | Gestão de chaves: três chaves distintas (dados, índice, selo) em variáveis de ambiente, validadas na inicialização; fora do repositório | **Parcial.** Validação e separação **implementadas e testadas**. **Pendentes:** cofre de segredos/KMS, política de rotação (o prefixo `enc1:` a viabiliza, mas **não há rotina de rotação**), backup da `DATA_ENCRYPTION_KEY` sob responsabilidade do projeto (**perdê-la torna os dados cifrados irrecuperáveis**). A `SUPABASE_SERVICE_KEY` (ignora o RLS e dá acesso total aos buckets) é a credencial mais poderosa do sistema: só no `backend/.env`, fora do Git, do painel e do app; trocar se vazar |
+| SEG-24 | Integridade dos arquivos: SHA-256 calculado no aparelho/navegador, conferido e gravado pelo servidor | **Implementado no backend (teste SQLite), painel e app (`tsc` ok, não executados).** Hash na captura persistido na fila; 422 `HASH_DIVERGENTE` com repetição no app; 409 `ARQUIVO_DIVERGENTE`. `SHA256_ORIGEM_OBRIGATORIO=true` adotado porque o app ainda não foi distribuído |
+| SEG-25 | Integridade da visita: selo HMAC-SHA256 e verificação administrativa | **Implementado (teste SQLite).** Detecta alteração direta no banco (campo, km, defeito), **remoção do selo** (cópia no `log_acao`) e troca/remoção/adulteração de arquivo em disco. **Corrigido na revisão de 08/11/2026:** o selo acusava `adulterado` em fluxo normal porque incluía pedágio, frete, comprovantes, fotos da ida e o técnico atribuído, que ainda mudam até o fim da volta (agora fora do selo e cobertos por regressão). **Limites:** não cobre volta, `km_total`, custo nem os itens acima; visitas anteriores à v0.6 ficam `sem_selo`; HMAC prova adulteração do banco, **não autoria** (8.1) |
+| SEG-26 | Assinatura do cliente cifrada em disco e entregue apenas por rota autenticada | **Implementado (teste SQLite).** `.enc` AES-256-GCM; `/static/assinaturas` inexistente; painel busca como `blob:` com o token. Assinaturas anteriores convertidas e conferidas contra o SHA-256 |
+| SEG-27 | TLS obrigatório em todas as conexões: banco, API e app | **Parcial.** Banco: `sslmode` ≥ `require` (testado como configuração); **`require` não valida o certificado do servidor** — usar `verify-full` + `DB_SSLROOTCERT` em produção. API: cabeçalho HSTS em produção (testado); **HTTPS no deploy (proxy/uvicorn) não verificado**. App: `usesCleartextTraffic=false` por padrão (config resolvida, **build não gerado nem testado**). O bloqueio de `http://` em produção no `api.ts` já existia |
+| SEG-28 | Backup e recuperação | **Parcial.** `scripts/backup_banco.py` (export consistente + arquivos + manifesto SHA-256, verificável). **Sem `pg_dump`** nesta máquina (só JSONL); a **restauração nunca foi testada**; o backup contém dados pessoais e fica em `backups/` (ignorado pelo Git) sem criptografia própria |
 
-**Observação (M3):** o CPF mascarado exibido no painel é apenas visual; a regra de armazenamento (máscara canônica do técnico, CPF do cliente só dígitos) está em 4.1, 4.7 e 6.3.1 e não deve ser confundida com proteção de dados.
+**Observação (M3):** o CPF mascarado exibido no painel é apenas visual (a proteção em repouso é a cifragem, SEG-22); a regra de armazenamento (máscara canônica do técnico, CPF do cliente só dígitos) está em 4.1, 4.7 e 6.3.1 e não deve ser confundida com proteção de dados.
+
+### 8.1 Confidencialidade e Integridade — decisões e matriz dos quatro pilares (v0.6)
+
+**Ativos:** CPF do cliente, CPF/CNPJ/telefone/dados bancários do técnico, assinatura do cliente, fotos e comprovantes, integridade do registro de atendimento. **Ameaças consideradas:** leitura direta do banco ou de um backup, alteração direta de registro (painel do Supabase, SQL), troca de arquivo em disco, corrupção ou troca de arquivo durante o trânsito ou enquanto espera na fila offline, acesso por URL à assinatura, tráfego sem TLS.
+
+**Decisões criptográficas**
+
+| Finalidade | Algoritmo / modo | Chave | Observações |
+|---|---|---|---|
+| Campos sensíveis e assinatura em disco | **AES-256-GCM** (biblioteca `cryptography`) | `DATA_ENCRYPTION_KEY` (32 bytes) | Nonce de 96 bits aleatório e novo a cada cifragem; AAD `fast-ariam-v1\|<tabela.coluna>` (assinatura: `arquivo.assinatura`); formato `enc1:<base64(nonce‖ct‖tag)>`; a tag autentica: alteração → `ErroDecifragem` |
+| Busca e unicidade de CNPJ | **HMAC-SHA256** determinístico (índice cego) | `INDEX_KEY` | Normaliza para os 14 dígitos; sem a chave não se testam candidatos (CNPJ tem pouca entropia) |
+| Integridade de arquivo | **SHA-256** | — (sem chave) | Detecta corrupção e troca acidental; **não autentica quem gerou** o arquivo |
+| Integridade da visita | **HMAC-SHA256** sobre JSON canônico (`sort_keys`, separadores compactos, `ensure_ascii=False`, instantes em UTC com microssegundos, valores monetários com 2 casas) | `INTEGRITY_KEY` | Quem altera o banco sem a chave não recalcula o selo. Comparação em tempo constante |
+| Senhas | bcrypt | — | Já existente; nunca SHA-256 simples |
+| Sessão | JWT **HS256** (simétrico) | `SECRET_KEY` | Ver nota em 6.2 |
+
+**O que o selo cobre e não cobre (D1).** Regra de ouro: **só entra no selo o que o fluxo normal não altera mais depois do fim do atendimento**; do contrário o selo acusaria `adulterado` numa OS legítima. **Cobre**, por visita: ids da OS e da visita, `data_visita`, horários e km da **ida**, início e fim do atendimento, nome e CPF do cliente, URL e SHA-256 da assinatura e, por equipamento, `id_os_equipamento`, `id_equipamento_modelo`, **número de série**, conserto salvo, descrições, defeitos, materiais e fotos de serviço (tipo, URL, hash). **Não cobre** (e por quê): a **volta**, `km_total` e o custo (acontecem depois); **pedágio, frete e comprovantes** (podem chegar até o fim da volta); as **fotos da ida** (podem ser reenviadas até a OS finalizar); o **técnico atribuído** (pode ser desativado e desatribuído entre o atendimento e a volta, RN-08a); e o nome do modelo (renomear reescreve o histórico exibido, 6.13). O que fica fora do selo **não fica sem conferência**: a verificação **re-hasheia em disco** assinatura, fotos de serviço, fotos de deslocamento/odômetro (ida e volta) e comprovantes contra o SHA-256 gravado, e o autor da finalização consta em `log_acao`. **Correção administrativa (RN-49)** de fotos e materiais **resseala** a visita e registra `SELO_RESSELADO` (selo anterior e novo).
+
+**Selo removido (v0.6, revisão).** O selo é gravado **também no `log_acao`** (`ATENDIMENTO_FINALIZADO.selo` e `SELO_RESSELADO.selo_novo`). Se `visita.selo_integridade` for anulado no banco mas o log registra que a visita foi selada, a verificação responde **`adulterado` com `selo_removido`** (e não `sem_selo`). Se o selo da visita for trocado por outro valor, aparece `selo_diverge_da_auditoria`. Só é `sem_selo` (legado) a visita **sem selo e sem selo no log**, isto é, finalizada antes da v0.6. Residual: quem alterar a visita **e** o `log_acao`, e tiver a `INTEGRITY_KEY`, ainda consegue forjar tudo; sem a chave, não.
+
+**Matriz dos quatro pilares**
+
+| Pilar | Controle atual | Evidência | Lacuna / risco residual |
+|---|---|---|---|
+| **Confidencialidade** | AES-256-GCM nos campos sensíveis e na assinatura; TLS ao banco (`sslmode`), HSTS, Android sem HTTP puro; assinatura só por rota autenticada | Testes SQLite (T-60 a T-69, T-86 a T-89); dados migrados e conferidos por consulta no Supabase | Fotos e comprovantes em **bucket privado** (SEG-09), mas **sem cifragem da aplicação** (só a da plataforma) e com cópia ainda no disco local; sem cofre/rotação de chaves; `sslmode=require` **não valida o certificado** (a aplicação registra aviso em produção; use `verify-full` + CA do provedor); HTTPS do deploy e build Android **não verificados**; backup sem cifragem própria; dev e produção no mesmo projeto; **AAD é por coluna, não por linha**: dá para copiar o valor cifrado do CPF de um técnico para outro e ambos decifram (na visita o selo detecta a troca; em `tecnico` não — amarrar ao `id_tecnico` exigiria gravar em duas etapas e não foi feito) |
+| **Autenticação** | Senhas com bcrypt; JWT HS256 com expiração; usuário reconsultado a cada requisição (SEG-01); TLS autentica o servidor **se** o cliente validar o certificado | Já descrito em SEG-01/02/07 | JWT é **simétrico**; sem rate limit de login (SEG-16); sem identidade de dispositivo |
+| **Integridade** | SHA-256 de arquivos (origem + servidor), selo HMAC por visita (também registrado no `log_acao`), verificação administrativa, AES-GCM autenticado, `compare_digest` | T-70 a T-85, T-94 a T-99 | Selo parcial (D1); `sem_selo` para o legado; o hash de origem prova que o arquivo não mudou depois da **captura**, não que a foto é verdadeira — e, no aparelho, o SHA-256 e o arquivo ficam **na mesma área do app**: protege de corrupção no trânsito e na fila, **não** de quem tem root no aparelho e altera os dois; atacante com **as duas** chaves e acesso ao banco pode regerar selos |
+| **Não repúdio** | **Nenhum controle criptográfico.** A imagem da assinatura é uma imagem; o selo é HMAC (chave do servidor) | — | **Não foi demonstrado não repúdio.** Exigiria assinatura digital assimétrica por signatário (par de chaves no Android Keystore, chave pública cadastrada e revogável) e análise jurídica; **fora do escopo da v0.6** e dependente de decisão do PO. A trilha `log_acao` registra autor, papel e instante, mas não é imutável para quem tem acesso ao banco |
+
+**Ciclo de vida das chaves.** Geração aleatória de 32 bytes (`os.urandom`) em base64; armazenamento em variável de ambiente (`.env`, ignorado pelo Git); as três devem ser diferentes entre si e da `SECRET_KEY` (a aplicação recusa iniciar caso contrário); chaves de teste fixas e distintas ficam apenas em `tests/conftest.py`. **Pendências:** cofre de segredos, rotação (prefixo `enc1:` já reserva a versão), política de revogação e backup da `DATA_ENCRYPTION_KEY` fora do repositório e do banco. Em suspeita de comprometimento: rotacionar, recifrar, regerar `cnpj_idx` e resselar.
+
+**Migração dos dados existentes (08/11/2026).** Ordem executada: backup (`backup_banco.py`, verificado) → `0010` (aditiva) → backup → `0011` (tipos `text`, remoção do CHECK do CPF e do UNIQUE do CNPJ, `cnpj_idx` + índice único) → `cifrar_dados_existentes.py` (dry-run, depois real; 3 técnicos e 2 CPFs de clientes cifrados, `cnpj_idx` preenchido, 2 assinaturas convertidas para `.enc` e conferidas por SHA-256, hashes preenchidos) → `0012` (`cnpj_idx NOT NULL`) → `ENCRYPTION_ALLOW_LEGACY_PLAINTEXT=false`. Rollback: `0010_rollback`, `0011_rollback` (exige antes `cifrar_dados_existentes.py --decifrar` e **aborta** se houver valor cifrado), `0012_rollback`. Os arquivos `backend/migrations/` (inclusive `0010` a `0012` e os rollbacks) **passam a ser versionados no Git** (decisão do responsável em 08/11/2026; a pasta saiu do `.gitignore`; verificado que não contêm segredos).
+
+**Limitação dos hashes legados.** Os SHA-256 de fotos anteriores à v0.6 foram calculados sobre o arquivo **como estava em 08/11/2026**: servem para detectar alterações **daí em diante**, não provam que eram os originais.
+
+**Evidência e estado.** Todos os controles acima foram exercitados em **SQLite**; no Supabase foram feitas apenas a aplicação das migrações, a conferência por consulta e a leitura somente-leitura descrita no cabeçalho. Nenhum SEG-22 a SEG-28 está *verificado*.
 
 ## 9. Armazenamento de arquivos — Supabase Storage privado
 
 **Situação atual:** confirmado pelo responsável do projeto: fotos, comprovantes e assinaturas estão armazenados no disco do servidor (`static/uploads/`, `static/assinaturas/`). Esse armazenamento local não é adequado como destino persistente em ambiente gerenciado e deve ser migrado.
 
-> **Status em 07/11/2026: NÃO IMPLEMENTADO (pendente, SEG-09 / PR-03).** Os arquivos continuam em disco local e `/static` ainda é público (apenas com `nosniff`). Reforço de risco: dev e produção compartilham o mesmo projeto Supabase (decisão do PO); o bucket e a service key precisarão de separação ou de controle de acesso equivalente antes de produção plena.
+> **Status em 09/11/2026 (v0.6): IMPLEMENTADO e MIGRADO para o Supabase real; painel não exercitado em navegador.** Os buckets privados `fast-ariam-privado` e `fast-ariam-privado-dev` existem no Supabase real (migração `0013_storage_buckets`, aplicada pelo MCP em 08/11/2026): `public = false`, limite 15 MB, tipos `image/jpeg`, `image/png` e `application/octet-stream` (assinaturas `.enc`), RLS ativo em `storage.objects` e **nenhuma política** (acesso de `anon`/`authenticated` negado). `scripts/testar_storage.py` passou **6/6 contra o Supabase real** (upload, download idêntico, recusa de sobrescrita, link público negado, leitura sem credencial negada, remoção). `scripts/migrar_arquivos_para_storage.py` migrou **17 arquivos (15 fotos + 2 assinaturas `.enc`) em 09/11/2026**, cada um conferido byte a byte após o upload; uma nova simulação mostra 17 `ja_no_bucket` e a leitura de ponta a ponta pelo backend (via Supabase) devolve as 17 referências com o SHA-256 do banco conferindo. Os **5 arquivos órfãos** (sem referência no banco; nomes de uma versão antiga: `servico_1_foto_conserto_*`, `visita_1_*`) **foram excluídos do disco local** depois de confirmados, com hash idêntico, nos backups `20261108-221733` e `20261108-224357`; não foram enviados ao bucket. As **cópias locais dos 17 arquivos migrados continuam no disco** (não foi usado `--apagar-locais`). **Não verificado:** o painel com `FotoSegura` e `AssinaturaImagem` não foi aberto em navegador; as rotas `arquivos/conteudo` e `assinatura` só foram exercitadas por teste automatizado.
 
-**Destino definido:** Supabase Storage em bucket privado `fast-ariam-privado`.
+> **Registro operacional (09/11/2026) — incidente na validação.** Ao colocar a chave de serviço no `.env`, a suíte de testes passou a herdar `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` (o `conftest.py` isolava o banco, mas não o Storage) e **gravou cerca de 503 objetos de teste no bucket real** (520 no total contra 17 legítimos). O banco **não** foi afetado (já era isolado em SQLite). Correção: `conftest.py` agora zera `SUPABASE_*` e **aborta a sessão** se o armazenamento não for local; a suíte voltou a rodar em 1m46 e uma execução posterior confirmou que não gravou nada novo no bucket. **Limpeza concluída em 09/11/2026, com autorização expressa do responsável:** foram removidos, pela API do Storage, os **503 objetos** que o banco real não referenciava (o script de apoio, descartável e fora do repositório, abortaria se algum dos 17 legítimos faltasse). Depois: o bucket tem **17 objetos** (15 em `uploads`, 2 em `assinaturas`, mesmos tamanhos de antes da suíte), conferido por consulta ao `storage.objects`, e a leitura de ponta a ponta pelo backend devolve **17/17** referências com o SHA-256 do banco conferindo. Lição: toda nova credencial/serviço externo precisa ser neutralizada no `conftest.py` **antes** de entrar no `.env`.
+
+> **Atualização v0.6:** as **assinaturas** já são gravadas **cifradas** e servidas por rota autenticada (SEG-26). Fotos e comprovantes continuam em `static/uploads` e **públicos**. Ao migrar para o Storage: calcular o checksum dos arquivos já cifrados/decifrados conforme o caso (a assinatura `.enc` deve ser decifrada em memória, conferida contra `assinatura_sha256` e recifrada no destino, ou mantida cifrada no bucket), preservar `sha256` e não alterar `selo_integridade`.
+
+**Como ficou o desenho (v0.6)**
+
+- **A referência no banco não mudou.** As colunas `url` continuam com `/static/uploads/<nome>` e `/static/assinaturas/<nome>.enc`; é um identificador lógico, **não** um endereço (o `/static` foi removido). O objeto vai para `uploads/<nome>` e `assinaturas/<nome>` dentro do bucket. Assim **nenhuma linha é atualizada na migração e os selos de integridade, que incluem essas referências, continuam válidos**.
+- **Leitura somente por rota autenticada da API**, que confere a permissão do usuário sobre a OS e que o arquivo pertence **àquela** OS (nome adivinhado de outra OS → 404): `GET /api/chamados/{id}/arquivos/conteudo?url=<referência>` (fotos de serviço, comprovantes e fotos de odômetro/deslocamento; `Cache-Control: private, max-age=300`) e `GET /api/chamados/{id}/visitas/{v}/assinatura`. O painel busca com o token e exibe por `blob:` (`FotoSegura`, `AssinaturaImagem`). A API **faz o proxy** do arquivo em vez de emitir links assinados do Supabase: mesmo caminho de código em dev/teste/produção, nenhuma URL com token circula e o painel não depende de CORS do Storage; a desvantagem é o tráfego passar pelo backend (aceitável para imagens de até 15 MB neste volume). Links assinados (`createSignedUrl`) ficam como evolução, se o egress do backend virar problema.
+- **Escrita sem sobrescrita** (`x-upsert: false`): nome repetido é erro. Falha do Storage vira **503** sem expor a chave nem o corpo enviado.
+- **Formato da chave:** a chave nova `sb_secret_...` **não é JWT** e vai **somente** no cabeçalho `apikey` (no `Authorization: Bearer` a plataforma a rejeita com `Invalid Compact JWS`); a chave antiga `service_role` (JWT) vai nos dois. O cliente escolhe pelo prefixo `sb_` (teste). Recomenda-se a chave nova (rotação sem derrubar a JWT secret).
+- **Chave de serviço** só em `backend/.env` (`SUPABASE_SERVICE_KEY`); `SUPABASE_URL` e a chave devem ser definidas **juntas**; em `ENV=production` o Supabase é obrigatório (disco local é efêmero e não privado); sem as variáveis, dev/teste usam o disco local.
+- **Cifragem:** as assinaturas já sobem cifradas pela aplicação (AES-256-GCM). Fotos e comprovantes ficam com a cifragem em repouso da plataforma Supabase; cifrá-los também na aplicação é uma evolução possível, **não feita**.
+- **Dev x produção:** o projeto é compartilhado; use `STORAGE_BUCKET=fast-ariam-privado-dev` fora de produção.
+
+**Destino definido (SDD original):** Supabase Storage em bucket privado `fast-ariam-privado`.
 
 | Item | Especificação |
 |---|---|
@@ -1037,11 +1135,11 @@ A edição do admin volta a ser possível **somente com a OS `Finalizado` e não
 | Cota Free atualmente documentada | 1 GB de armazenamento; 5 GB de egress não cacheado e 5 GB cacheado |
 | Limite máximo de arquivo no projeto Free | 50 MB; configurar o bucket e a aplicação para o limite menor, de 15 MB |
 | Upload permitido | JPEG/PNG; limite de 15 MB por imagem |
-| Caminho | `chamados/{id_os}/visitas/{id_visita}/{categoria}/{uuid}.{ext}` |
+| Caminho | **Implementado como `uploads/<nome>` e `assinaturas/<nome>`** (o nome já carrega `chamado_{id}_visita_{id}_...`). A estrutura `chamados/{id_os}/visitas/{id_visita}/{categoria}/...` do desenho original **não foi adotada** (exigiria renomear objetos e as referências, e invalidaria os selos) |
 | Categorias | `odometro`, `deslocamento`, `defeito`, `conserto`, `comprovante`, `assinatura` |
 | Acesso | Bucket privado; somente backend com `SUPABASE_SERVICE_KEY` faz operações privilegiadas. API verifica permissão e gera URL assinada de curta duração (ex.: 1 hora) |
 | Colunas | Manter colunas `*_url`/`url` como referência ao path do objeto, não URL pública permanente |
-| Migração | Script idempotente que copia arquivos locais, valida checksum, atualiza referências e gera relatório de arquivos ausentes/órfãos; executar em janela de manutenção com backup |
+| Migração | **Executada em 09/11/2026:** `scripts/migrar_arquivos_para_storage.py` (idempotente; `--dry-run`; confere o SHA-256 do banco antes de subir, **nunca sobrescreve**, baixa e compara byte a byte depois de subir, não sobe assinatura em claro, relata ausentes/órfãos/divergentes/conflitos; `--apagar-locais` só apaga o que foi confirmado no bucket). Resultado: 17 migrados, 0 conflitos, 0 divergentes, 0 ausentes, 5 órfãos (excluídos do disco, ver acima). Como a referência não muda, não houve atualização de linhas |
 
 **Limitações financeiras/operacionais:** a cota de 1 GB e o egress do plano Free não são ilimitados. A documentação atual informa que projetos Free podem ser pausados após uma semana de inatividade. Para operação de produção que exija disponibilidade contínua, maior volume, backup/SLA ou cotas superiores, avaliar o plano Pro antes do lançamento. O custo do plano deve ser validado no momento da contratação.
 
@@ -1059,6 +1157,13 @@ A edição do admin volta a ser possível **somente com a OS `Finalizado` e não
 | Iniciar deslocamento de ida duas vezes | 400 | "Deslocamento de ida já iniciado" | OK |
 | Volta sem fim do atendimento | 400 | "Finalize o atendimento antes de iniciar o deslocamento de volta" | OK |
 | Finalizar atendimento com pausa ativa | 400 | "Não é possível finalizar o atendimento enquanto a OS estiver pausada." | OK |
+| Upload com hash diferente do calculado no servidor | 422 | "Arquivo corrompido em trânsito (hash divergente)." `codigo: HASH_DIVERGENTE` | Implementado (v0.6); o app repete o envio |
+| Hash ausente com `SHA256_ORIGEM_OBRIGATORIO=true` | 422 | "Informe o SHA-256 do arquivo (campo 'sha256')." `codigo: HASH_AUSENTE` | Implementado (v0.6) |
+| Hash fora do formato (64 hex) | 422 | "SHA-256 inválido: envie 64 caracteres hexadecimais." `codigo: HASH_INVALIDO` | Implementado (v0.6) |
+| Mesmo `client_file_id` com conteúdo diferente | 409 | "client_file_id já usado com outro conteúdo." `codigo: ARQUIVO_DIVERGENTE` | Implementado (v0.6) |
+| `GET .../assinatura` de visita sem assinatura ou sem arquivo | 404 | "Esta visita não tem assinatura." / "Arquivo da assinatura não encontrado." | Implementado (v0.6) |
+| Assinatura `.enc` adulterada | 500 | "Assinatura ilegível: falha de integridade. Avise o administrador." | Implementado (v0.6); registra erro no log |
+| `verificar-integridade` por não admin / sem token | 403 / 401 | Mensagens padrão de autorização | Implementado (v0.6) |
 | Transição inválida de status | 409 | `detail` explica a transição | Implementado (TR-01) |
 | Enum de status inválido | 422 | Lista de valores aceitos | OK, mas o painel envia valor inválido (PR-07) |
 | Pausa com motivo fora da lista | 422 | — | Adicionar (seção 7) |
@@ -1359,6 +1464,78 @@ Cada teste descreve Dado / Quando / Então e deve virar teste automatizado (`bac
 - `Fluxo.servico` envia série e nome pelo técnico: quebra (`test_servicos_e_robustez`, `test_permissoes`, `test_uploads`, `test_visita_aberta_e_correcoes_qa`, `scripts/smoke_api.py`; no app `registroEquipamento.tsx` e `api/servico.ts`).
 - T-08 e T-24 usam `/servicos/{s}/upload-foto`: o `{s}` passa a vir do registro criado pelo servidor. T-16/T-17: cada visita precisa de fotos e conserto; a reatribuição cria visita nova sem fotos. T-28/T-29: os negativos podem passar por falso positivo (422 por falta de equipamento) — assertar a mensagem, não só o código. T-02: o 400 de pausada vem da checagem de pausa — assertar a mensagem.
 
+### 11.2 Testes de confidencialidade e integridade (v0.6)
+
+**Resultado real em 08/11/2026 (SQLite):** 414 testes passando no backend (09/11/2026), dos quais 42 em `backend/tests/chamados/test_cifragem_integridade.py` (T-60 a T-99 abaixo; os IDs agrupam cenários, então não há correspondência 1:1 com as funções de teste). Os T-91 a T-93 usam um SQLite temporário "pós-0011" com dados em claro para exercitar o script de migração. **Não executados em PostgreSQL/Supabase**: unicidade do índice cego, tipos `text`/`jsonb`, `CHECK` de hash e comportamento real de `sslmode` precisam de teste equivalente à produção.
+
+| ID | Cenário | Esperado |
+|---|---|---|
+| T-60 | Cifrar duas vezes o mesmo valor | Prefixo `enc1:`, valores diferentes (nonce novo), ambos decifram igual |
+| T-61 | Bit alterado na tag; valor colado em outra coluna (contexto); valor sem prefixo | `ErroDecifragem` nos três |
+| T-62 | Cifrar/decifrar bytes com contexto trocado | Falha de autenticação |
+| T-63 | Índice cego: determinístico, depende do contexto e do valor, `None` → `None` | 64 hex; diferentes quando devem ser |
+| T-64 | Criar técnico e ler o banco por SQL cru | CPF/CNPJ/telefone/banco/agência/conta/PIX com `enc1:`, nada em claro; `cnpj_idx` ≠ dígitos; API devolve em claro |
+| T-65 | CNPJ duplicado sem máscara | 409 pelo índice cego |
+| T-66 | Valor cifrado adulterado no banco | Leitura falha (`ErroDecifragem`) |
+| T-67 | Texto puro em coluna cifrada | Erro com `ENCRYPTION_ALLOW_LEGACY_PLAINTEXT=false`; lido com `true` |
+| T-68 | CPF do cliente após `finalizar-atendimento` | Cifrado no banco; decifrado pelo ORM |
+| T-69 | Chaves ausentes / base64 inválido / tamanho ≠ 32 / repetidas | A aplicação não inicia (`ValueError`) |
+| T-70 | Upload com `sha256` correto; hash errado; hash malformado | 200 com `sha256` gravado; 422 sem gravar arquivo nem registro; 422 |
+| T-71 | Upload sem hash | O servidor calcula e grava o seu |
+| T-72 | `SHA256_ORIGEM_OBRIGATORIO=true` sem hash | 422 `HASH_AUSENTE` |
+| T-73 | `upload-deslocamento` com hash | `visita.arquivos_sha256` preenchido |
+| T-74 | Assinatura com `assinatura_sha256` errado/correto | 422 / 200 e `assinatura_sha256` = hash dos bytes originais |
+| T-75 | `/api/sync/arquivos`: hash errado, correto, reenvio igual, mesmo id com outro conteúdo | 422 (`codigo`), 200, `duplicado`, 409 |
+| T-76 | Finalizar atendimento | `selo_integridade` (64 hex) e `selo_versao = 1`; verificação `integro`; ação `INTEGRIDADE_VERIFICADA` auditada |
+| T-77 | Verificação por técnico, outro técnico e sem token | 403, 403, 401 |
+| T-78 | `UPDATE` direto no nome do cliente | `adulterado` com `selo_divergente` |
+| T-79 | `UPDATE` direto em `km_fim_ida` | `adulterado` |
+| T-80 | Trocar o arquivo de uma foto em disco; depois apagá-lo | `arquivo_divergente:*`; `arquivo_ausente:*` |
+| T-81 | Alterar um byte do `.enc` da assinatura | `arquivo_adulterado:assinatura` |
+| T-82 | Selo anulado no banco (a visita consta como selada no `log_acao`) | `adulterado` com `selo_removido` (não `sem_selo`) |
+| T-82b | Visita legada: sem selo na visita **e** sem selo no `log_acao` | `sem_selo` (não é adulteração) |
+| T-83 | Visita em atendimento (não finalizada) | `nao_finalizada` |
+| T-84 | Admin corrige materiais após a OS Finalizada | Selo muda, verificação continua `integro`, `SELO_RESSELADO` com anterior e novo |
+| T-85 | Resposta de erro de regra | Corpo com `codigo` estável |
+| T-86 | Assinatura em disco | Arquivo `.enc` ilegível como imagem; `/static/assinaturas/<arquivo>` → 404 |
+| T-87 | `GET .../assinatura` | Técnico atribuído e admin: 200, bytes idênticos ao original, `no-store`; outro técnico 403; sem token 401 |
+| T-88 | Assinatura antiga em claro | Ainda servida até a conversão |
+| T-89 | `ler_arquivo_por_url` com `../` e `None` | `None` (sem path traversal) |
+| T-90 | HSTS | Ausente fora de produção; presente em toda resposta (inclusive 404) com `ENV=production` |
+| T-90b | `_connect_args`: SQLite → `{}`; PostgreSQL → `sslmode=require`; `verify-full` + raiz; `disable` recusado em produção e aceito (com aviso) fora dela; valor desconhecido → erro | Conforme descrito |
+| T-91 | Script de migração: cifra, preenche `cnpj_idx`, é idempotente | Segunda execução não altera nada |
+| T-92 | Script: `--dry-run` não grava; `--decifrar` reverte | Verificado |
+| T-93 | Script: converte assinatura, confere por SHA-256, preserva o original sem `--apagar-originais`, preenche hashes sem inventar os de arquivos ausentes | Verificado |
+
+| T-94 | Selo trocado por outro valor | `selo_divergente` e `selo_diverge_da_auditoria` |
+| T-95 | Finalizar atendimento | O selo e `selo_versao` constam no `payload` de `ATENDIMENTO_FINALIZADO` do `log_acao` |
+| T-96 | **Regressão do item 1 da revisão.** Depois de finalizar o atendimento e antes da volta: upload de comprovante de pedágio, `PATCH` de `valor_pedagio`/`valor_frete_devolucao`, reenvio da foto da ida | Verificação continua `integro`; o arquivo do comprovante adulterado é acusado (`arquivo_divergente:comprovante_pedagio`) — fora do selo, mas com hash conferido. O teste **falha** se o pedágio voltar ao selo (verificado por mutação) |
+| T-97 | Fluxo completo até a OS `Finalizado` (volta, custo congelado) | `integro` |
+| T-98 | Desativar o técnico entre o atendimento e a volta (OS vai a `Pendente`, sem técnico) | `integro` |
+| T-99 | `ENCRYPTION_ALLOW_LEGACY_PLAINTEXT`: padrão `false`; `true` recusado com `ENV=production`; `DB_SSLMODE=require` em produção registra aviso de certificado não validado | Conforme descrito |
+
+**Testes a executar antes de qualquer SEG-22 a SEG-28 virar *verificado* (plano, não resultado):** repetir T-64/T-65/T-78 a T-84 contra PostgreSQL equivalente ao de produção; restaurar um backup em ambiente limpo; conectar com `verify-full` e certificado inválido (deve falhar); `curl` sem TLS contra o deploy e conferir HSTS; executar o app Android em aparelho (captura → fila offline → envio → `HASH_DIVERGENTE` provocado) e o build de produção sem HTTP puro.
+
+### 11.3 Testes do armazenamento privado (v0.6)
+
+**Resultado real em 09/11/2026:** `test_storage_privado.py` (cliente do Storage com **transporte HTTP simulado**, rota de arquivos com bucket em memória, `/static`, configuração) e `test_migracao_storage.py` (script de migração com SQLite + bucket em memória) passam em SQLite. A conformidade com o servidor **real** foi verificada à parte, manualmente, por `scripts/testar_storage.py` (6/6) e pela migração (17/17 conferidos). O `conftest.py` impede que a suíte use o Storage real.
+
+| ID | Cenário | Esperado |
+|---|---|---|
+| T-100 | Upload ao bucket | `POST /storage/v1/object/<bucket>/<area>/<nome>` com `x-upsert: false`, `Content-Type` e a chave de serviço |
+| T-101 | Chave nova `sb_secret_...` vs chave antiga JWT | Nova: só `apikey`; antiga: `apikey` e `Authorization` |
+| T-102 | Download | Endpoint `object/authenticated`; objeto inexistente (404, ou 400 com `not_found`) vira `None` |
+| T-103 | Remoção de objeto inexistente | Sem erro (idempotente) |
+| T-104 | Falha do Storage (500 ou rede) | 503 sem vazar a chave nem registrá-la no log |
+| T-105 | Referência inválida (`../`, `/`, área desconhecida, vazio) | `ValueError`, nenhuma requisição é feita; nome com caracteres especiais vai codificado |
+| T-106 | Configuração | `local`/`supabase`; produção sem Supabase, só uma das variáveis e URL `http://` são recusadas |
+| T-107 | Com o bucket (em memória) | Foto e assinatura **não tocam o disco**; assinatura chega cifrada como `application/octet-stream` |
+| T-108 | `GET .../arquivos/conteudo` | Admin e técnico da OS: 200 com os mesmos bytes e `Cache-Control: private`; outro técnico 403; sem token 401 |
+| T-109 | Arquivo de outra OS, assinatura, referência inventada ou ausente do bucket | 404 (anti-IDOR) |
+| T-110 | `/static/uploads/*` e `/static/assinaturas/*` | 404 mesmo com o arquivo no disco |
+| T-111 | Verificação de integridade lendo do bucket; objeto trocado no bucket | `arquivo_divergente:*` |
+| T-112 | Script de migração | Dry-run não grava; sobe e confere; não sobrescreve (`conflito`); hash do banco divergente não sobe; órfão só com `--incluir-orfaos`; assinatura em claro não sobe; `--apagar-locais` só apaga o confirmado; falha na conferência pós-upload interrompe sem apagar |
+
 ## 12. Plano de correção (backlog ordenado)
 
 Ordem de execução. Cada item cita o ID do PRD.
@@ -1379,7 +1556,7 @@ Ordem de execução. Cada item cita o ID do PRD.
 | 7 | PR-01 | Remover `repairTecnicoProfile` e o botão associado | `AdminDashboardView.tsx`, `apiClient.ts` | — |
 | 8 | PR-02 | Remover fallbacks com dados fictícios em `getTecnicos`, `getTecnico`, `getChamados` | `apiClient.ts`, `chamadoService.ts` | — |
 | 9 | PR-06 | Criar `GET /api/auth/me` ou remover a chamada no app | `auth.py`, `tecnico.ts` | — |
-| 10 | PR-03 | Migrar fotos, comprovantes e assinaturas do disco local para o bucket privado Supabase Storage; implementar URLs assinadas e migração idempotente | `file_service.py`, `chamados.py`, operação | Destino confirmado; verificar cotas/plano antes do release |
+| 10 | PR-03 | Migrar fotos, comprovantes e assinaturas do disco local para o bucket privado Supabase Storage. **v0.6: concluído em 09/11/2026 (17 arquivos migrados e conferidos). Pendentes: validar o painel em navegador e decidir `--apagar-locais`.** (O bucket já foi limpo dos objetos de teste, seção 9.) | `file_service.py`, `storage_service.py`, `chamados.py`, operação | Chave de serviço no `.env` (feito) |
 | 11 | PR-09 | Criar fluxo/tela de reagendamento no painel, habilitado somente em `Aguardando Reagendamento` e `Agendado` antes da ida | `ModalDetalheOSAdmin.tsx` | Regras de reagendamento confirmadas na v0.3 |
 | 12 | PR-13 | Implementar validador de transições (seção 5.3) e erro 409 | `chamado_service.py` | Itens 4 e 5 |
 | 13 | PR-14 | Mover URL base do app para variável de ambiente `EXPO_PUBLIC_API_URL` | `frontend/src/api/api.ts` | — |
@@ -1401,6 +1578,12 @@ Ordem de execução. Cada item cita o ID do PRD.
 | 28 | PR-41 | **(v0.5)** App: equipamentos da OS somente leitura, foto de defeito antes de iniciar, "Salvar conserto", botões desabilitados com a pendência do servidor, remoção de "Adicionar equipamento" e dos campos de série/nome | `[id].tsx`, `registroEquipamento.tsx`, `RegistroFotoDefeito.tsx`, `utils/visita.ts`, `api/*.ts` | Itens 25 e 26 |
 | 29 | PR-44 | **(v0.5)** Atualizar o contrato de sincronização (eventos, cache, códigos `FOTO_DEFEITO_AUSENTE`/`CONSERTO_INCOMPLETO`) quando `/api/sync` for implementado | backend, app | Sincronização offline (pendente) |
 | 30 | — | **(v0.5)** Atualizar helpers e testes existentes e criar T-37 a T-59; executar em PostgreSQL equivalente ao de produção | `backend/tests/` | Itens 24 a 26 |
+| 31 | SEG-22, SEG-23 | **(v0.6)** Cifragem AES-256-GCM dos campos sensíveis, índice cego do CNPJ, chaves validadas; migrações `0011`/`0012` e script de cifragem dos dados existentes. **Backend e dados implementados** (SQLite + Supabase conferido por consulta). Pendente: cofre de segredos e rotação | `core/crypto.py`, `models`, `migrations`, `scripts` | Backup |
+| 32 | SEG-24 | **(v0.6)** Hash SHA-256 de todo arquivo (servidor sempre; origem obrigatória): backend, painel e app (fila com schema v2). **Implementado**; app/painel não executados | `file_service.py`, endpoints, `offline/*`, `apiClient.ts` | — |
+| 33 | SEG-25 | **(v0.6)** Selo HMAC por visita, ressêlo na correção administrativa e `GET .../verificar-integridade`. **Implementado** (SQLite). Decidir (PO) se a volta/custo devem entrar no selo | `integridade_service.py`, `visita_service.py`, `servico_service.py` | Item 32 |
+| 34 | SEG-26, SEG-09 | **(v0.6)** Assinatura cifrada + rota autenticada + painel com `blob:`; fotos, comprovantes e fotos de deslocamento em bucket privado (`storage_service`, `arquivos/conteudo`, `FotoSegura`, `/static` removido). **Implementado e migrado** (09/11/2026). Pendente: painel em navegador, remoção das cópias locais, cifragem das fotos pela aplicação (opcional) | `file_service.py`, `storage_service.py`, `chamados.py`, `FotoSegura.tsx` | Item 31 |
+| 35 | SEG-27 | **(v0.6)** TLS: `sslmode`, HSTS, `usesCleartextTraffic=false`. **Implementado como configuração**. Pendente: `verify-full` com certificado raiz, HTTPS no deploy e build Android de produção | `database.py`, `main.py`, `app.config.ts` | Infraestrutura |
+| 36 | SEG-28 | **(v0.6)** Backup (`backup_banco.py`) implementado; pendente: restauração testada, `pg_dump`, cifragem do backup, retenção (`backend/migrations/` já versionada) | `scripts/`, operação | — |
 
 ## 13. Ordem de implementação recomendada (cronograma sugerido)
 
@@ -1418,6 +1601,7 @@ Cada item deve ter teste da seção 11 antes de fechar.
 |---|---|---|
 | 0.2 | 29/10/2026 | Contrato inicial alinhado ao PRD v0.2. |
 | 0.3 | 29/10/2026 | Estados Pendente/Aberto, reagendamento, custos globais, conflito offline, sessão 24 h sem refresh, upload 15 MB, Storage privado, desempenho e escopo sem ajudantes/notificações. |
+| 0.6 | 08/11/2026 | **Confidencialidade e Integridade.** Cifragem AES-256-GCM de campos sensíveis (`TextoCifrado`, `enc1:`) com índice cego do CNPJ (4.1, 4.4); SHA-256 de todo arquivo, calculado no aparelho/navegador e conferido pelo servidor (6.8, 6.12); selo HMAC-SHA256 por visita e `GET .../verificar-integridade` (4.4, 6.6, 8.1); assinatura cifrada em disco e `GET .../assinatura` autenticado, `/static/assinaturas` removido (6.6, 9); TLS (`DB_SSLMODE`, HSTS, Android sem HTTP puro); `ErroRegra` com `codigo`; variáveis `DATA_ENCRYPTION_KEY`, `INDEX_KEY`, `INTEGRITY_KEY`, `ENCRYPTION_ALLOW_LEGACY_PLAINTEXT`, `SHA256_ORIGEM_OBRIGATORIO`, `DB_SSLMODE`, `DB_SSLROOTCERT` (2); decisões D1 a D6 (0.3); nova seção 8.1 (decisões criptográficas, chaves, matriz dos quatro pilares, riscos residuais); SEG-22 a SEG-28 e atualização do SEG-09; T-60 a T-93 (11.2); backlog 31 a 36. Migrações `0010` a `0012` e cifragem dos dados **aplicadas no Supabase real**; backup e script de migração. **Revisão de 08/11/2026:** selo sem os dados que mudam até o fim da volta e com cópia no `log_acao` (detecta selo removido); `ENCRYPTION_ALLOW_LEGACY_PLAINTEXT` desligado por padrão e recusado em produção; aviso de `sslmode=require`; riscos residuais explícitos (AAD por coluna, hash e arquivo na mesma área do app, fotos públicas); uploads diretos do app passam a enviar o hash. **Armazenamento privado (08/11/2026):** buckets `fast-ariam-privado` e `-dev` criados no Supabase (`0013`), `storage_service`, rota `arquivos/conteudo`, `/static` removido, painel com `FotoSegura`, scripts `migrar_arquivos_para_storage.py` e `testar_storage.py`; **executado em 09/11/2026:** `testar_storage.py` 6/6 no Supabase real; 17 arquivos migrados e conferidos; 5 órfãos excluídos do disco. Incidente: a suíte de testes chegou a gravar ~503 objetos de teste no bucket real antes de o `conftest.py` ser blindado (registro na seção 9); bucket limpo em seguida, com autorização do responsável (503 objetos removidos; restam os 17 legítimos). **Nenhum controle verificado em PostgreSQL; não há não repúdio criptográfico.** |
 | 0.5 | 08/11/2026 | Regra de equipamento da OS (backend e testes SQLite implementados em 08/11/2026; migrações aplicadas no Supabase real; painel e app implementados mas não executados): catálogo `equipamento_modelo`, vínculo `os_equipamento` (modelo + série único por OS), `servico_equipamento` com `id_os_equipamento`, `conserto_salvo_em` e `is_legado` (4.5, 4.8); migração em fases com `is_legado` (4.9); registro de serviço por equipamento criado pelo servidor (6.5.3), `POST .../servicos` 410, `salvar-conserto` e regras de fase do upload (6.7); travas TR-12/TR-13/TR-14 em iniciar e finalizar atendimento com 409 (5, 6.6); `EstadoVisita` com `equipamentos[]` e bloqueios (6.6.3); novo capítulo 6.13 (catálogo, vínculo, auditoria, concorrência); sincronização com `FOTO_DEFEITO_AUSENTE`/`CONSERTO_INCOMPLETO` e SY-08/SY-09 (6.12); validações e erros (7, 10); SEG-20/SEG-21 (8); T-37 a T-59 e regressões esperadas (11.1); backlog 24 a 30 (12). **Confirmações do responsável (08/11/2026) incorporadas:** exigência por equipamento da OS; OS sempre com ≥ 1 equipamento (TR-15); edição do admin só até o início do atendimento e de volta apenas com a OS Finalizada, para corrigir fotos comprobatórias e materiais (RN-49, 6.13: rotas de correção, trava da última foto, auditoria, custo congelado não recalculado); renomear modelo reescreve o histórico; T-58 e T-59. Em aberto: Q-EQ6 e Q-EQ7. |
 | 0.4 | 07/11/2026 | Decisões do PO: RN-08a resolvida (desatribuição automática na desativação do técnico), visita automática ao entrar em Agendado, máscara canônica de CPF/CNPJ do técnico (CPF do cliente só dígitos), administrador não recebe OS, tempo de serviço de visita pausada vale zero no custo, foto de conserto 960 × 1280 em qualquer orientação, ambiente dev/produção compartilhado como risco aceito. Contratos implementados incorporados: `ocorrido_em`, `Visita` ampliada, `finalizar-dados` 410, remoção de `/concluir` e `DELETE /chamados`, `PATCH` da OS restrito, reagendamento com validações, uploads (409/413/422), `GET /custos` com snapshot, `/auth/me`, `CORS_ORIGINS`/`ENV`/`AUTO_CREATE_TABLES`/`SECRET_KEY`. Seção 8 com status honesto; novas pendências SEG-16 a SEG-19; T-08 e T-17 reescritos; T-28 a T-36 adicionados. |
 

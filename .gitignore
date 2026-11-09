@@ -101,5 +101,7 @@ desktop.ini
 # --- Documento interno ja ignorado antes em frontend/.gitignore -------------
 frontend/PRD_Sistema_OS.md
 
-# --- Migrations SQL (decisao: nao versionar; ficam so na maquina local) -----
-backend/migrations/
+
+# --- Backups locais (contem dados pessoais) ---
+backups/
+backend/backups/

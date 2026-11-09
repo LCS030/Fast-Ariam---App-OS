@@ -80,5 +80,4 @@ host remoto sem `--allow-remote` e exige `--yes` ou a digitação do nome do ban
 
 * A pasta `mysql/` é **legada** (script do MySQL/XAMPP da fase de protótipo); o projeto usa PostgreSQL e ela não é
   usada pela aplicação.
-* Arquivos enviados ainda são servidos de `/static` (disco local, público). A migração para Supabase Storage com bucket
-  privado e URLs assinadas (SDD seção 9, SEG-09) está **pendente**.
+* Arquivos (fotos, comprovantes, assinaturas): ficam em **bucket privado do Supabase Storage** quando `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` estão no `.env` (disco local só em dev/teste; obrigatório Supabase em `ENV=production`). **Não existe mais `/static` público**: a leitura é só por `GET /api/chamados/{id}/arquivos/conteudo?url=...` e `.../visitas/{v}/assinatura`, autenticadas e com autorização por OS. Para migrar os arquivos já existentes: `python scripts/testar_storage.py` e depois `python scripts/migrar_arquivos_para_storage.py --dry-run`.

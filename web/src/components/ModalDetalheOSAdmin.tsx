@@ -271,7 +271,7 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                 </h2>
                 <StatusBadge status={os.status} cancelada={os.is_cancelled} size="md" />
                 {os.em_garantia && (
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30 flex items-center gap-1">
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-success/10 text-success-strong border border-success/30 flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5" /> Garantia
                   </span>
                 )}
@@ -332,7 +332,7 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                 onClick={() => setShowReagendar(true)}
                 disabled={!permReagendar.permitido}
                 title={permReagendar.permitido ? 'Reagendar a visita' : permReagendar.motivo}
-                className="px-3.5 py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3.5 py-2 bg-primary/10 hover:bg-primary/20 text-primary-strong border border-primary/30 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CalendarClock className="w-4 h-4" /> Reagendar
               </button>
@@ -451,13 +451,13 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                 </span>
                 {t ? (
                   <div className="flex items-center gap-3 bg-card p-3 rounded-xl border border-border">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-sm">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary-strong text-sm">
                       {t.nome.slice(0, 2).toUpperCase()}
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-foreground">{t.nome}</h3>
                       <p className="text-[11px] text-muted-foreground">{t.email}</p>
-                      {t.telefone && <p className="text-[11px] text-success font-semibold mt-0.5">{t.telefone}</p>}
+                      {t.telefone && <p className="text-[11px] text-success-strong font-semibold mt-0.5">{t.telefone}</p>}
                     </div>
                   </div>
                 ) : os.id_tecnico_atribuido ? (
@@ -560,7 +560,7 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                           <span
                             className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
                               v.servico_finalizado
-                                ? 'bg-success/10 text-success border-success/30'
+                                ? 'bg-success/10 text-success-strong border-success/30'
                                 : 'bg-secondary text-muted-foreground border-border'
                             }`}
                           >
@@ -577,7 +577,7 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                           <div className="bg-card p-3 rounded-xl border border-border">
                             <span className="text-[10px] text-muted-foreground block font-semibold">Ida: fim (chegada)</span>
                             <span className="text-sm font-extrabold">{horaDe(v.ida_fim_em, v.hora_fim_ida || v.hora_chegada_cliente)}</span>
-                            <span className="text-[11px] text-success font-bold block mt-1">{kmDe(v.km_fim_ida)}</span>
+                            <span className="text-[11px] text-success-strong font-bold block mt-1">{kmDe(v.km_fim_ida)}</span>
                           </div>
                           <div className="bg-card p-3 rounded-xl border border-border">
                             <span className="text-[10px] text-muted-foreground block font-semibold">Volta: início</span>
@@ -672,7 +672,7 @@ export const ModalDetalheOSAdmin: React.FC<Props> = ({ isOpen, os, onClose, onEd
                                         <span
                                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                                             s.conserto_salvo_em
-                                              ? 'bg-success/10 text-success border-success/30'
+                                              ? 'bg-success/10 text-success-strong border-success/30'
                                               : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                                           }`}
                                         >

@@ -165,7 +165,7 @@ export const ModalNovaOS: React.FC<Props> = ({ isOpen, clientes, tecnicos, osEdi
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
         {erroLocal && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 font-semibold flex items-center gap-2">
+          <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-xl text-destructive font-semibold flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{erroLocal}</span>
           </div>
@@ -174,7 +174,7 @@ export const ModalNovaOS: React.FC<Props> = ({ isOpen, clientes, tecnicos, osEdi
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label htmlFor="os-cliente" className="block font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
-              <Building className="w-3.5 h-3.5 text-primary" /> Cliente solicitante *
+              <Building className="w-3.5 h-3.5 text-primary-strong" /> Cliente solicitante *
             </label>
             {emEdicao ? (
               <p className="w-full bg-secondary/60 border border-border rounded-xl p-3 text-foreground">
@@ -201,7 +201,7 @@ export const ModalNovaOS: React.FC<Props> = ({ isOpen, clientes, tecnicos, osEdi
 
           <div>
             <label htmlFor="os-tecnico" className="block font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
-              <Wrench className="w-3.5 h-3.5 text-primary" /> Técnico responsável (opcional)
+              <Wrench className="w-3.5 h-3.5 text-primary-strong" /> Técnico responsável (opcional)
             </label>
             {emEdicao ? (
               <p className="w-full bg-secondary/60 border border-border rounded-xl p-3 text-muted-foreground">
@@ -228,7 +228,7 @@ export const ModalNovaOS: React.FC<Props> = ({ isOpen, clientes, tecnicos, osEdi
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label htmlFor="os-data" className="block font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-primary" /> Data de agendamento
+              <Calendar className="w-3.5 h-3.5 text-primary-strong" /> Data de agendamento
             </label>
             {emEdicao ? (
               <p className="w-full bg-secondary/60 border border-border rounded-xl p-3 text-muted-foreground">
@@ -262,7 +262,7 @@ export const ModalNovaOS: React.FC<Props> = ({ isOpen, clientes, tecnicos, osEdi
 
         <div>
           <label htmlFor="os-descricao" className="block font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 text-primary" /> Descrição do problema / solicitação *
+            <AlertCircle className="w-3.5 h-3.5 text-primary-strong" /> Descrição do problema / solicitação *
           </label>
           <textarea
             id="os-descricao"
@@ -283,7 +283,7 @@ export const ModalNovaOS: React.FC<Props> = ({ isOpen, clientes, tecnicos, osEdi
         ) : (
           <fieldset className="space-y-3 border border-border rounded-2xl p-4 bg-secondary/20">
             <legend className="px-2 font-semibold text-foreground flex items-center gap-1.5">
-              <Package className="w-3.5 h-3.5 text-primary" /> Equipamentos *
+              <Package className="w-3.5 h-3.5 text-primary-strong" /> Equipamentos *
             </legend>
             <p className="text-[11px] text-muted-foreground">
               Toda OS precisa de ao menos um equipamento: modelo do catálogo e número de série. O técnico não cadastra nem
@@ -404,7 +404,7 @@ export const ModalNovaOS: React.FC<Props> = ({ isOpen, clientes, tecnicos, osEdi
             className="w-4 h-4 accent-primary rounded cursor-pointer"
           />
           <label htmlFor="em_garantia" className="font-semibold text-foreground cursor-pointer flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-success" /> Atendimento coberto por garantia
+            <ShieldCheck className="w-4 h-4 text-success-strong" /> Atendimento coberto por garantia
           </label>
         </div>
 

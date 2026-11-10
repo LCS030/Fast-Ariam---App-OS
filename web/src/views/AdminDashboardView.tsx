@@ -382,7 +382,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
             <div className="space-y-6">
               <div className="surface-card p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-primary/10 border border-primary/20 text-primary rounded-xl">
+                  <div className="p-2.5 bg-primary/10 border border-primary/20 text-primary-strong rounded-xl">
                     <Calendar className="w-5 h-5" />
                   </div>
                   <div>
@@ -477,7 +477,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                       <h3 className="text-2xl font-black text-foreground font-['Space_Grotesk'] mt-1">{moeda(totaisVisitas.pedagioFrete)}</h3>
                       <p className="text-[11px] text-muted-foreground mt-1">Valores informados nas visitas</p>
                     </div>
-                    <div className="p-3 bg-success/10 border border-success/20 text-success rounded-2xl">
+                    <div className="p-3 bg-success/10 border border-success/20 text-success-strong rounded-2xl">
                       <Receipt className="w-6 h-6" />
                     </div>
                   </div>
@@ -490,7 +490,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                       <h3 className="text-2xl font-black text-foreground font-['Space_Grotesk'] mt-1">{moeda(totaisVisitas.pecas)}</h3>
                       <p className="text-[11px] text-muted-foreground mt-1">Quantidade × valor informado</p>
                     </div>
-                    <div className="p-3 bg-primary/10 border border-primary/20 text-primary rounded-2xl">
+                    <div className="p-3 bg-primary/10 border border-primary/20 text-primary-strong rounded-2xl">
                       <Package className="w-6 h-6" />
                     </div>
                   </div>
@@ -513,8 +513,8 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
 
                 <div className="surface-card p-4 shadow-sm">
                   <span className="text-[11px] font-semibold text-muted-foreground block">Finalizadas</span>
-                  <div className="text-xl font-bold text-success font-['Space_Grotesk'] mt-0.5">{finalizadasOS}</div>
-                  <span className="text-[10px] text-success font-medium">
+                  <div className="text-xl font-bold text-success-strong font-['Space_Grotesk'] mt-0.5">{finalizadasOS}</div>
+                  <span className="text-[10px] text-success-strong font-medium">
                     {totalOS > 0 ? Math.round((finalizadasOS / totalOS) * 100) : 0}% do total
                   </span>
                 </div>
@@ -666,7 +666,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="text-sm font-extrabold text-foreground">{cli.razao_social}</h3>
                                 {isAtivo ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-success/10 text-success-strong border border-success/20">
                                     <UserCheck className="w-3 h-3" /> Ativo
                                   </span>
                                 ) : (
@@ -687,7 +687,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                           <div className="mt-3 pt-3 border-t border-border space-y-2 text-xs text-foreground/90">
                             {cli.contato_principal_nome && (
                               <p className="flex items-center gap-2 text-muted-foreground">
-                                <Phone className="w-3.5 h-3.5 text-success shrink-0" />
+                                <Phone className="w-3.5 h-3.5 text-success-strong shrink-0" />
                                 <span>
                                   Contato: <strong className="text-foreground">{cli.contato_principal_nome}</strong>
                                   {cli.contato_principal_telefone ? ` (${cli.contato_principal_telefone})` : ''}
@@ -695,7 +695,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                               </p>
                             )}
                             <p className="flex items-center gap-2 text-muted-foreground">
-                              <Phone className="w-3.5 h-3.5 text-primary shrink-0" />
+                              <Phone className="w-3.5 h-3.5 text-primary-strong shrink-0" />
                               <span>
                                 Telefone: <strong className="text-foreground">{cli.telefone || 'não informado'}</strong>
                               </span>
@@ -726,7 +726,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                             className={`px-3 py-1.5 border rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
                               isAtivo
                                 ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/30'
-                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/30'
+                                : 'bg-success/10 hover:bg-success/20 text-success-strong border-success/30'
                             }`}
                           >
                             <Power className="w-3.5 h-3.5" />
@@ -845,14 +845,14 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                       >
                         <div className="space-y-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-base">
+                            <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary-strong text-base">
                               {tec.nome.slice(0, 2).toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-1">
                                 <h3 className="text-sm font-extrabold text-foreground truncate">{tec.nome}</h3>
                                 {isAtivo ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shrink-0">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-success/10 text-success-strong border border-success/20 shrink-0">
                                     <UserCheck className="w-3 h-3" /> Ativo
                                   </span>
                                 ) : (
@@ -873,7 +873,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                               <span className="text-foreground/90 truncate">{tec.email}</span>
                             </p>
                             <p className="flex items-center gap-2">
-                              <Phone className="w-3.5 h-3.5 text-success shrink-0" />
+                              <Phone className="w-3.5 h-3.5 text-success-strong shrink-0" />
                               <span className="text-foreground/90">{tec.telefone || 'Telefone não informado'}</span>
                             </p>
                             {tec.cpf && (
@@ -896,7 +896,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                             </div>
                             <div className="bg-secondary p-2 rounded-xl border border-border">
                               <span className="text-[10px] text-muted-foreground block">Finalizadas</span>
-                              <span className="font-extrabold text-success">{finalizadasCount}</span>
+                              <span className="font-extrabold text-success-strong">{finalizadasCount}</span>
                             </div>
                           </div>
                         </div>
@@ -918,7 +918,7 @@ export const AdminDashboardView: React.FC<Props> = ({ onLogout }) => {
                             className={`px-3 py-1.5 border rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
                               isAtivo
                                 ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/30'
-                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/30'
+                                : 'bg-success/10 hover:bg-success/20 text-success-strong border-success/30'
                             }`}
                           >
                             <Power className="w-3.5 h-3.5" />

@@ -152,7 +152,7 @@ export const TabelaOrdensServico: React.FC<Props> = ({
                   <tr key={item.id_os} className="hover:bg-muted/50 transition-colors group">
                     <td className="py-3.5 px-4 font-medium">
                       <div className="flex flex-col gap-1">
-                        <span className="font-extrabold text-foreground font-['Space_Grotesk'] text-xs group-hover:text-primary transition-colors">
+                        <span className="font-extrabold text-foreground font-['Space_Grotesk'] text-xs group-hover:text-primary-strong transition-colors">
                           #{item.codigo_os}
                         </span>
                         <StatusBadge status={item.status} cancelada={item.is_cancelled} size="sm" />
@@ -161,7 +161,7 @@ export const TabelaOrdensServico: React.FC<Props> = ({
 
                     <td className="py-3.5 px-4">
                       <p className="font-bold text-foreground flex items-center gap-1.5">
-                        <Building className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <Building className="w-3.5 h-3.5 text-primary-strong shrink-0" />
                         <span>{item.cliente.razao_social}</span>
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -173,7 +173,7 @@ export const TabelaOrdensServico: React.FC<Props> = ({
                     <td className="py-3.5 px-4">
                       {tec ? (
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-[10px] shrink-0">
+                          <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary-strong text-[10px] shrink-0">
                             {tec.nome.slice(0, 2).toUpperCase()}
                           </div>
                           <div className="min-w-0">
@@ -186,7 +186,7 @@ export const TabelaOrdensServico: React.FC<Props> = ({
                       ) : podeAtribuir ? (
                         <button
                           onClick={() => onAssignTecnico(item)}
-                          className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-[11px] font-semibold border border-primary/30 flex items-center gap-1 cursor-pointer"
+                          className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary-strong rounded-lg text-[11px] font-semibold border border-primary/30 flex items-center gap-1 cursor-pointer"
                         >
                           <UserCheck className="w-3 h-3" /> Atribuir
                         </button>
@@ -205,7 +205,7 @@ export const TabelaOrdensServico: React.FC<Props> = ({
                     <td className="py-3.5 px-4">
                       <span
                         className={`text-[11px] font-semibold flex items-center gap-1 ${
-                          item.em_garantia ? 'text-success' : 'text-muted-foreground'
+                          item.em_garantia ? 'text-success-strong' : 'text-muted-foreground'
                         }`}
                       >
                         <ShieldCheck className="w-3.5 h-3.5" />
@@ -218,7 +218,7 @@ export const TabelaOrdensServico: React.FC<Props> = ({
                         <button
                           title="Visualizar detalhes da OS"
                           onClick={() => onSelectOS(item)}
-                          className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg border border-primary/30 transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                          className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary-strong rounded-lg border border-primary/30 transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>Detalhes</span>

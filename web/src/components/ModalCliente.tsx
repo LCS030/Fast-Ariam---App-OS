@@ -94,7 +94,7 @@ export const ModalCliente: React.FC<Props> = ({ isOpen, clienteEdicao, onClose, 
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
         {erroLocal && (
-          <div role="alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 font-semibold">
+          <div role="alert" className="p-3 bg-destructive/10 border border-destructive/30 rounded-xl text-destructive font-semibold">
             {erroLocal}
           </div>
         )}
@@ -106,7 +106,7 @@ export const ModalCliente: React.FC<Props> = ({ isOpen, clienteEdicao, onClose, 
           </div>
           <div>
             <label htmlFor="cli-codigo" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-              <Hash className="w-3.5 h-3.5 text-primary" /> Código do cliente *
+              <Hash className="w-3.5 h-3.5 text-primary-strong" /> Código do cliente *
             </label>
             <input
               id="cli-codigo"
@@ -124,19 +124,19 @@ export const ModalCliente: React.FC<Props> = ({ isOpen, clienteEdicao, onClose, 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label htmlFor="cli-tel" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-              <Phone className="w-3.5 h-3.5 text-primary" /> Telefone geral *
+              <Phone className="w-3.5 h-3.5 text-primary-strong" /> Telefone geral *
             </label>
             <input id="cli-tel" type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className={INPUT} />
           </div>
           <div>
             <label htmlFor="cli-contato" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-              <User className="w-3.5 h-3.5 text-primary" /> Contato principal
+              <User className="w-3.5 h-3.5 text-primary-strong" /> Contato principal
             </label>
             <input id="cli-contato" type="text" value={contatoNome} onChange={(e) => setContatoNome(e.target.value)} className={INPUT} />
           </div>
           <div>
             <label htmlFor="cli-contato-tel" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-              <Phone className="w-3.5 h-3.5 text-primary" /> Tel. do contato
+              <Phone className="w-3.5 h-3.5 text-primary-strong" /> Tel. do contato
             </label>
             <input id="cli-contato-tel" type="text" value={contatoTelefone} onChange={(e) => setContatoTelefone(e.target.value)} className={INPUT} />
           </div>
@@ -144,7 +144,7 @@ export const ModalCliente: React.FC<Props> = ({ isOpen, clienteEdicao, onClose, 
 
         <div className="bg-secondary/50 p-4 rounded-2xl border border-border space-y-3">
           <h4 className="font-bold text-foreground text-xs flex items-center gap-1.5">
-            <MapPin className="w-4 h-4 text-primary" /> Endereço de atendimento
+            <MapPin className="w-4 h-4 text-primary-strong" /> Endereço de atendimento
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
@@ -197,7 +197,7 @@ export const ModalCliente: React.FC<Props> = ({ isOpen, clienteEdicao, onClose, 
                 onChange={(e) => setIsActive(e.target.checked)}
                 className="w-4 h-4 rounded bg-secondary border-border accent-emerald-500 cursor-pointer"
               />
-              <span className={`text-xs font-bold ${isActive ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+              <span className={`text-xs font-bold ${isActive ? 'text-success-strong' : 'text-muted-foreground'}`}>
                 {isActive ? 'Ativo' : 'Inativo'}
               </span>
             </label>

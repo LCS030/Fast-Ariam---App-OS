@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { OrdemServico, STATUS_OS, StatusChamado, Tecnico } from '../types';
 import { Filter, PieChart as PieIcon, BarChart2 } from 'lucide-react';
+import { colors } from '../styles/Colors';
 
 interface Props {
   /** OS não canceladas (já filtradas por período). */
@@ -24,15 +25,16 @@ interface Props {
 
 type FiltroGrafico = StatusChamado | 'TODOS' | 'CANCELADAS';
 
-// Cores da marca FAST para os gráficos (mantidas do painel anterior).
+// Cores dos gráficos = paleta do app mobile (src/styles/Colors.ts). Âmbar (Pendente/Pausado) e violeta (Aguardando
+// Reagendamento) não existem na paleta do app e seguem como cores de apoio para as etapas intermediárias.
 const COR_STATUS: Record<StatusChamado | 'Cancelada', string> = {
   Pendente: '#D97706',
-  Agendado: '#004F9F',
-  'Em Atendimento': '#2563EB',
+  Agendado: colors.blue[900],
+  'Em Atendimento': colors.action.primary,
   Pausado: '#F59E0B',
   'Aguardando Reagendamento': '#7C3AED',
-  Finalizado: '#16A34A',
-  Cancelada: '#DC2626',
+  Finalizado: colors.green[500],
+  Cancelada: colors.red[900],
 };
 
 const STATUS_EM_ABERTO: StatusChamado[] = ['Pendente', 'Agendado', 'Em Atendimento', 'Pausado', 'Aguardando Reagendamento'];
@@ -147,7 +149,7 @@ export const DashboardCharts: React.FC<Props> = ({ ativas, canceladas, tecnicos 
         <div className="surface-card p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-primary/10 rounded-xl border border-primary/20 text-primary">
+              <div className="p-2 bg-primary/10 rounded-xl border border-primary/20 text-primary-strong">
                 <BarChart2 className="w-4 h-4" />
               </div>
               <div>
@@ -161,8 +163,8 @@ export const DashboardCharts: React.FC<Props> = ({ ativas, canceladas, tecnicos 
             {tecnicoWorkloadData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={tecnicoWorkloadData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="nome" stroke="#888888" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#888888" fontSize={11} tickLine={false} allowDecimals={false} />
+                  <XAxis dataKey="nome" stroke={colors.gray[500]} fontSize={11} tickLine={false} />
+                  <YAxis stroke={colors.gray[500]} fontSize={11} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Legend
                     verticalAlign="top"
@@ -170,8 +172,8 @@ export const DashboardCharts: React.FC<Props> = ({ ativas, canceladas, tecnicos 
                     iconType="square"
                     formatter={(value) => <span className="text-foreground/80 text-xs">{value}</span>}
                   />
-                  <Bar dataKey="Em aberto" fill="#004F9F" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Finalizadas" fill="#16A34A" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Em aberto" fill={colors.blue[900]} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Finalizadas" fill={colors.green[500]} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (

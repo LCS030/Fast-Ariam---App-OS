@@ -1,39 +1,45 @@
 // File: src/styles/Colors.ts
 // Path: src/styles/Colors.ts
+//
+// MESMA paleta do app mobile (frontend/src/styles/Colors.ts). Os valores de `gray`, `blue`, `red`, `green` e `action`
+// são IDÊNTICOS aos do app. O index.css define os mesmos hex como variáveis CSS (tokens do Tailwind): ao mudar a
+// identidade visual, altere os dois lugares.
 
 export const colors = {
-  brand: {
-    navyDeep: "oklch(0.21 0.035 252)",
-    navy: "oklch(0.29 0.06 248)",
-    navyMedium: "oklch(0.38 0.075 246)",
-    redFast: "oklch(0.56 0.205 27)",
-    redFastBright: "oklch(0.62 0.19 27)",
-    white: "oklch(1 0 0)",
-  },
   gray: {
-    100: "oklch(0.98 0.004 250)",
-    200: "oklch(0.945 0.012 248)",
-    400: "oklch(0.72 0.02 250)",
-    500: "oklch(0.52 0.025 250)",
-    800: "oklch(0.3 0.04 252)",
-    950: "oklch(0.18 0.03 252)",
+    100: "#F4F4F5",
+    200: "#E9ECEF",
+    400: "#A1A1AA",
+    500: "#71717A",
+    800: "#27272A",
+    950: "#09090B",
   },
+
   blue: {
-    900: "oklch(0.29 0.06 248)",
-    500: "oklch(0.38 0.075 246)",
+    900: "#194869", // azul-marinho da marca (cabeçalho, títulos, botão secundário)
+    500: "#1E90FF",
   },
+
   red: {
-    500: "oklch(0.56 0.205 27)",
-    900: "oklch(0.45 0.22 27)",
+    500: "#FF0000",
+    900: "#CC0000",
   },
+
   green: {
-    500: "oklch(0.62 0.13 155)",
+    500: "#4CAF50",
   },
+
   action: {
-    primary: "oklch(0.56 0.205 27)",
+    primary: "#007BFF",
     text: "#FFFFFF",
+  },
+
+  // Extras do painel web (não existem no app): variantes de texto derivadas, só para contraste. O painel não usa degradês.
+  web: {
+    primaryText: "#0065CF", // #007BFF um tom mais escuro: texto pequeno sobre fundo claro (>= 4,5:1)
+    successText: "#2E7D32", // #4CAF50 um tom mais escuro: texto pequeno sobre fundo claro (>= 4,5:1)
+    successOnNavy: "#7FC784", // verde legível sobre o marinho
   },
 } as const;
 
 export type Colors = typeof colors;
-

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { UsuarioSessao } from '../types';
+import { LogoFast } from '../components/LogoFast';
 import { ChamadoService } from '../services/chamadoService';
 import { mensagemErro } from '../utils/os';
 import {
-  Wrench,
   Shield,
   ArrowRight,
   Lock,
@@ -49,25 +49,13 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess, aviso }) => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4 relative overflow-hidden text-foreground font-sans select-none">
-      {/* Brand Background Ambience - Corporate Blue Tones */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-96 bg-gradient-to-b from-primary/15 via-primary/5 to-transparent blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-10 -right-10 w-80 h-80 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 -left-20 w-80 h-80 bg-destructive/5 rounded-full blur-3xl pointer-events-none" />
-
       {/* Main Login Card */}
-      <div className="w-full max-w-md bg-card border border-border rounded-3xl p-8 shadow-xl relative z-10 backdrop-blur-xl">
-        {/* Brand Header */}
-        <div className="text-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground mx-auto shadow-lg shadow-primary/25 mb-3 ring-4 ring-primary/15">
-            <Wrench className="w-7 h-7 text-white" />
-          </div>
-          <h1 className="text-2xl font-black text-foreground tracking-tight font-['Space_Grotesk'] flex items-center justify-center gap-1.5">
-            <span className="text-primary font-black">FAST</span>{' '}
-            <span className="text-destructive font-black">GÔNDOLAS</span>
-          </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            FAST Gôndolas & Check-outs • Sistema de Gestão de Ordens de Serviço
-          </p>
+      <div className="w-full max-w-md bg-card border border-border rounded-3xl p-8 shadow-xl relative z-10">
+        {/* Marca: logo oficial FAST Gôndolas & Check-outs (a mesma do app) */}
+        <div className="text-center mb-7">
+          <h1 className="sr-only">FAST Gôndolas & Check-outs</h1>
+          <LogoFast className="h-16 mx-auto" />
+          <p className="text-xs text-muted-foreground mt-4">Sistema de Gestão de Ordens de Serviço</p>
         </div>
 
         {aviso && !errorMessage && (
@@ -154,7 +142,7 @@ export const LoginView: React.FC<Props> = ({ onLoginSuccess, aviso }) => {
         {/* Security Footer */}
         <div className="mt-6 pt-4 border-t border-border text-center">
           <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
-            <Shield className="w-3 h-3 text-primary" /> FAST Gôndolas & Check-outs • Acesso Seguro
+            <Shield className="w-3 h-3 text-primary-strong" /> FAST Gôndolas & Check-outs • Acesso Seguro
           </p>
         </div>
       </div>

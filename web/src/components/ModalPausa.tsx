@@ -52,7 +52,7 @@ export const ModalPausa: React.FC<Props> = ({ isOpen, codigoOS, onClose, onConfi
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {erroLocal && (
-          <div role="alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 text-xs font-semibold">
+          <div role="alert" className="p-3 bg-destructive/10 border border-destructive/30 rounded-xl text-destructive text-xs font-semibold">
             {erroLocal}
           </div>
         )}

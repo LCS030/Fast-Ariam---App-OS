@@ -121,7 +121,7 @@ export const ModalTecnico: React.FC<Props> = ({ isOpen, tecnicoEdicao, onClose, 
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
         {erroLocal && (
-          <div role="alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 font-semibold">
+          <div role="alert" className="p-3 bg-destructive/10 border border-destructive/30 rounded-xl text-destructive font-semibold">
             {erroLocal}
           </div>
         )}
@@ -133,7 +133,7 @@ export const ModalTecnico: React.FC<Props> = ({ isOpen, tecnicoEdicao, onClose, 
           </div>
           <div>
             <label htmlFor="tec-email" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-              <Mail className="w-3.5 h-3.5 text-primary" /> E-mail (login) *
+              <Mail className="w-3.5 h-3.5 text-primary-strong" /> E-mail (login) *
             </label>
             <input id="tec-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} />
           </div>
@@ -168,7 +168,7 @@ export const ModalTecnico: React.FC<Props> = ({ isOpen, tecnicoEdicao, onClose, 
           </div>
           <div>
             <label htmlFor="tec-tel" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-              <Phone className="w-3.5 h-3.5 text-primary" /> Telefone *
+              <Phone className="w-3.5 h-3.5 text-primary-strong" /> Telefone *
             </label>
             <input id="tec-tel" type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className={INPUT} />
           </div>
@@ -177,13 +177,13 @@ export const ModalTecnico: React.FC<Props> = ({ isOpen, tecnicoEdicao, onClose, 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label htmlFor="tec-ie" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-              <FileText className="w-3.5 h-3.5 text-primary" /> Inscrição estadual
+              <FileText className="w-3.5 h-3.5 text-primary-strong" /> Inscrição estadual
             </label>
             <input id="tec-ie" type="text" value={inscricaoEstadual} onChange={(e) => setInscricaoEstadual(e.target.value)} className={INPUT} />
           </div>
           <div>
             <label htmlFor="tec-role" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-              <Shield className="w-3.5 h-3.5 text-primary" /> Papel / perfil *
+              <Shield className="w-3.5 h-3.5 text-primary-strong" /> Papel / perfil *
             </label>
             <select
               id="tec-role"
@@ -198,7 +198,7 @@ export const ModalTecnico: React.FC<Props> = ({ isOpen, tecnicoEdicao, onClose, 
           {!tecnicoEdicao && (
             <div>
               <label htmlFor="tec-senha" className="block font-semibold text-foreground mb-1 flex items-center gap-1">
-                <Lock className="w-3.5 h-3.5 text-primary" /> Senha inicial *
+                <Lock className="w-3.5 h-3.5 text-primary-strong" /> Senha inicial *
               </label>
               <input
                 id="tec-senha"
@@ -215,7 +215,7 @@ export const ModalTecnico: React.FC<Props> = ({ isOpen, tecnicoEdicao, onClose, 
 
         <div className="bg-secondary/50 p-4 rounded-2xl border border-border space-y-3">
           <h4 className="font-bold text-foreground text-xs flex items-center gap-1.5">
-            <CreditCard className="w-4 h-4 text-primary" /> Dados bancários da conta jurídica
+            <CreditCard className="w-4 h-4 text-primary-strong" /> Dados bancários da conta jurídica
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
@@ -254,7 +254,7 @@ export const ModalTecnico: React.FC<Props> = ({ isOpen, tecnicoEdicao, onClose, 
                 onChange={(e) => setIsActive(e.target.checked)}
                 className="w-4 h-4 rounded bg-secondary border-border accent-emerald-500 cursor-pointer"
               />
-              <span className={`text-xs font-bold ${isActive ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+              <span className={`text-xs font-bold ${isActive ? 'text-success-strong' : 'text-muted-foreground'}`}>
                 {isActive ? 'Ativo' : 'Inativo'}
               </span>
             </label>

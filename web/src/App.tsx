@@ -1,3 +1,4 @@
+import { LogoFast } from './components/LogoFast';
 import React, { useState, useEffect } from 'react';
 import { UsuarioSessao } from './types';
 import { ChamadoService } from './services/chamadoService';
@@ -54,12 +55,14 @@ export function App() {
     return (
       <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4 text-foreground font-sans">
         <div className="w-full max-w-lg bg-card border border-border rounded-3xl p-8 shadow-2xl text-center space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center mx-auto shadow-md">
-            <Smartphone className="w-8 h-8 text-primary" />
+          <LogoFast className="h-12 mx-auto" />
+
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 text-primary-strong flex items-center justify-center mx-auto shadow-md">
+            <Smartphone className="w-8 h-8 text-primary-strong" />
           </div>
 
           <div className="space-y-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-primary px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-primary-strong px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
               Acesso de técnico de campo
             </span>
             <h1 className="text-xl font-black text-foreground font-['Space_Grotesk']">
@@ -73,7 +76,7 @@ export function App() {
 
           <div className="bg-secondary/60 p-4 rounded-2xl border border-border text-left text-xs space-y-2">
             <div className="flex items-center gap-2 font-bold text-foreground">
-              <Shield className="w-4 h-4 text-primary" />
+              <Shield className="w-4 h-4 text-primary-strong" />
               <span>Como executar seus atendimentos:</span>
             </div>
             <p className="text-muted-foreground text-[11px]">

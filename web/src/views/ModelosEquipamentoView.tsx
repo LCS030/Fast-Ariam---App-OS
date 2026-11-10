@@ -227,7 +227,7 @@ export const ModelosEquipamentoView: React.FC = () => {
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="text-sm font-extrabold text-foreground break-words min-w-0">{m.modelo}</h3>
                   {ativo ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shrink-0">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-success/10 text-success-strong border border-success/20 shrink-0">
                       <UserCheck className="w-3 h-3" /> Ativo
                     </span>
                   ) : (
@@ -252,7 +252,7 @@ export const ModelosEquipamentoView: React.FC = () => {
                     className={`px-3 py-1.5 border rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 ${
                       ativo
                         ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/30'
-                        : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/30'
+                        : 'bg-success/10 hover:bg-success/20 text-success-strong border-success/30'
                     }`}
                   >
                     {reativando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />}

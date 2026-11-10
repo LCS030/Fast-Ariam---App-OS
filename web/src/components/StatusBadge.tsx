@@ -31,7 +31,7 @@ const CONFIGS: Record<StatusChamado, Config> = {
   Agendado: {
     label: 'Agendado',
     bg: 'bg-primary/15',
-    text: 'text-primary',
+    text: 'text-primary-strong',
     border: 'border-primary/30',
     icon: <Calendar className={ICON} />,
   },
@@ -59,7 +59,7 @@ const CONFIGS: Record<StatusChamado, Config> = {
   Finalizado: {
     label: 'Finalizado',
     bg: 'bg-success/15',
-    text: 'text-success',
+    text: 'text-success-strong',
     border: 'border-success/30',
     icon: <CheckCircle2 className={ICON} />,
   },

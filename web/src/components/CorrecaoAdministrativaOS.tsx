@@ -278,7 +278,7 @@ const ServicoCorrecao: React.FC<{
           </p>
         )}
         {aviso && !fotoOp.erro && (
-          <p className="text-success font-semibold flex items-center gap-1.5">
+          <p className="text-success-strong font-semibold flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5" /> {aviso}
           </p>
         )}
@@ -356,7 +356,7 @@ const ServicoCorrecao: React.FC<{
           </p>
         )}
         {avisoMat && !erroMat && !matOp.erro && (
-          <p className="text-success font-semibold flex items-center gap-1.5">
+          <p className="text-success-strong font-semibold flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5" /> {avisoMat}
           </p>
         )}
@@ -414,7 +414,7 @@ export const CorrecaoAdministrativaOS: React.FC<Props> = ({ os, ajusteCusto, onM
                 <ArrowRight className="w-4 h-4" />
               </>
             ) : null}
-            <span className="text-success">{formatMoeda(ajusteCusto.novo)}</span>
+            <span className="text-success-strong">{formatMoeda(ajusteCusto.novo)}</span>
           </p>
           <p className="text-[11px] text-muted-foreground">
             O recálculo usa os materiais corrigidos e os valores de referência já congelados na finalização da OS (não a

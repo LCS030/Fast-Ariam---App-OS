@@ -13,7 +13,7 @@ interface Props {
 }
 
 const TONS = {
-  primary: 'bg-primary/10 border-primary/20 text-primary',
+  primary: 'bg-primary/10 border-primary/20 text-primary-strong',
   destructive: 'bg-destructive/10 border-destructive/30 text-destructive',
   warning: 'bg-amber-500/10 border-amber-500/30 text-amber-600',
 };

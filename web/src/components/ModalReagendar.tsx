@@ -58,7 +58,7 @@ export const ModalReagendar: React.FC<Props> = ({ isOpen, codigoOS, status, onCl
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
         {erroLocal && (
-          <div role="alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 font-semibold">
+          <div role="alert" className="p-3 bg-destructive/10 border border-destructive/30 rounded-xl text-destructive font-semibold">
             {erroLocal}
           </div>
         )}

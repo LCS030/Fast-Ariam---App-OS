@@ -4,8 +4,18 @@
 
 /*
  * Design system — FAST Gôndolas & Check-outs.
- * Paleta da marca: Azul corporativo FAST (Principal) + Branco (Superfícies) + Vermelho FAST (Acento).
- * Todas as cores em oklch.
+ *
+ * PALETA = a MESMA do app mobile (frontend/src/styles/Colors.ts). Os valores abaixo são os hex do app:
+ *   azul-marinho da marca  #194869  (cabeçalho, títulos, botão secundário)  -> --accent / --color-fast-navy
+ *   azul de ação           #007BFF  (botão principal, foco)                 -> --primary
+ *   vermelho de erro       #CC0000 (texto/botão) e #FF0000 (borda de erro)  -> --destructive
+ *   verde de confirmação   #4CAF50                                          -> --success
+ *   cinzas (zinc)          #F4F4F5 fundo · #E9ECEF bordas · #27272A texto · #71717A texto secundário
+ * Mantenha este arquivo e o Colors.ts do app em sincronia ao mudar a identidade visual.
+ *
+ * CONTRASTE: as cores exatas valem para preenchimentos, bordas e botões. Para TEXTO PEQUENO sobre fundo claro, o azul
+ * #007BFF e o verde #4CAF50 ficam abaixo de 4,5:1; por isso existem as variantes de texto --primary-strong (#0065CF) e
+ * --success-strong (#2E7D32), do mesmo matiz, só um tom mais escuras. Use text-primary-strong / text-success-strong em texto.
  */
 
 @theme {
@@ -37,6 +47,9 @@
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
   --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
+  --color-success-light: var(--success-light);
+  --color-primary-strong: var(--primary-strong);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
@@ -56,13 +69,13 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Brand Fast Colors */
-  --color-fast-blue: oklch(0.44 0.17 250);
-  --color-fast-blue-dark: oklch(0.28 0.09 250);
-  --color-fast-blue-light: oklch(0.55 0.16 248);
-  --color-fast-red: oklch(0.55 0.22 27);
-  --color-fast-red-dark: oklch(0.46 0.21 27);
-  --color-fast-red-light: oklch(0.62 0.20 27);
+  /* Marca FAST (mesmos hex do app mobile) */
+  --color-fast-navy: #194869;
+  --color-fast-blue: #007bff;
+  --color-fast-sky: #1e90ff;
+  --color-fast-red: #cc0000;
+  --color-fast-red-bright: #ff0000;
+  --color-fast-green: #4caf50;
 
   /* Backward compatibility with existing utility aliases */
   --color-slate-950: var(--background);
@@ -83,94 +96,95 @@
 
 :root {
   --radius: 0.75rem;
-  --background: oklch(0.975 0.008 248);
-  --foreground: oklch(0.16 0.035 252);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.16 0.035 252);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0.035 252);
-  --primary: oklch(0.44 0.17 250);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.955 0.009 248);
-  --secondary-foreground: oklch(0.20 0.04 250);
-  --muted: oklch(0.945 0.008 248);
-  --muted-foreground: oklch(0.46 0.03 250);
-  --accent: oklch(0.44 0.17 250);
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.55 0.22 27);
-  --destructive-foreground: oklch(1 0 0);
-  --success: oklch(0.58 0.14 150);
-  --success-foreground: oklch(1 0 0);
+  --background: #f4f4f5;
+  --foreground: #27272a;
+  --card: #ffffff;
+  --card-foreground: #27272a;
+  --popover: #ffffff;
+  --popover-foreground: #27272a;
+  --primary: #007bff;
+  --primary-strong: #0065cf;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #27272a;
+  --muted: #e9ecef;
+  --muted-foreground: #71717a;
+  --accent: #194869;
+  --accent-foreground: #ffffff;
+  --destructive: #cc0000;
+  --destructive-foreground: #ffffff;
+  --success: #4caf50;
+  --success-strong: #2e7d32;
+  --success-light: #7fc784;
+  --success-foreground: #09090b;
   --warning: oklch(0.72 0.16 75);
   --warning-foreground: oklch(0.2 0.04 70);
-  --info: oklch(0.48 0.15 250);
-  --info-foreground: oklch(1 0 0);
-  --border: oklch(0.90 0.01 248);
-  --input: oklch(0.90 0.01 248);
-  --ring: oklch(0.44 0.17 250);
-  --chart-1: oklch(0.44 0.17 250);
-  --chart-2: oklch(0.55 0.22 27);
-  --chart-3: oklch(0.58 0.14 150);
-  --chart-4: oklch(0.60 0.12 245);
+  --info: #007bff;
+  --info-foreground: #ffffff;
+  --border: #e9ecef;
+  --input: #e9ecef;
+  --ring: #007bff;
+  --chart-1: #194869;
+  --chart-2: #cc0000;
+  --chart-3: #4caf50;
+  --chart-4: #007bff;
   --chart-5: oklch(0.72 0.16 75);
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.20 0.04 250);
-  --sidebar-primary: oklch(0.44 0.17 250);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.955 0.01 248);
-  --sidebar-accent-foreground: oklch(0.16 0.035 252);
-  --sidebar-border: oklch(0.90 0.01 248);
-  --sidebar-ring: oklch(0.44 0.17 250);
+  --sidebar: #194869;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #007bff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(255 255 255 / 10%);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-ring: #007bff;
 
-  --gradient-header: linear-gradient(
-    120deg,
-    oklch(0.985 0.004 250),
-    oklch(0.96 0.008 248)
-  );
-  --shadow-card: 0 1px 3px oklch(0 0 0 / 0.05),
-    0 6px 16px -8px oklch(0 0 0 / 0.08);
-  --shadow-float: 0 12px 32px -12px oklch(0 0 0 / 0.15);
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.05), 0 6px 16px -8px rgb(0 0 0 / 0.08);
+  --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.15);
 }
 
+/* Tema escuro (hoje não é ativado por nenhuma tela): derivado do mesmo marinho, com o azul de ação mais claro. */
 .dark {
-  --background: oklch(0.16 0.03 252);
-  --foreground: oklch(0.96 0.006 250);
-  --card: oklch(0.21 0.035 252);
-  --card-foreground: oklch(0.96 0.006 250);
-  --popover: oklch(0.21 0.035 252);
-  --popover-foreground: oklch(0.96 0.006 250);
-  --primary: oklch(0.55 0.16 248);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.28 0.04 252);
-  --secondary-foreground: oklch(0.96 0.006 250);
-  --muted: oklch(0.28 0.04 252);
-  --muted-foreground: oklch(0.72 0.02 250);
-  --accent: oklch(0.55 0.16 248);
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.55 0.22 27);
-  --destructive-foreground: oklch(1 0 0);
-  --success: oklch(0.7 0.13 155);
-  --success-foreground: oklch(0.18 0.03 252);
+  --background: #0f2b3f;
+  --foreground: #f4f4f5;
+  --card: #143852;
+  --card-foreground: #f4f4f5;
+  --popover: #143852;
+  --popover-foreground: #f4f4f5;
+  --primary: #1e90ff;
+  --primary-strong: #5aadff;
+  --primary-foreground: #ffffff;
+  --secondary: #194869;
+  --secondary-foreground: #f4f4f5;
+  --muted: #194869;
+  --muted-foreground: #a1a1aa;
+  --accent: #1e90ff;
+  --accent-foreground: #ffffff;
+  --destructive: #ff4d4d;
+  --destructive-foreground: #ffffff;
+  --success: #4caf50;
+  --success-strong: #7fc784;
+  --success-light: #7fc784;
+  --success-foreground: #09090b;
   --warning: oklch(0.8 0.15 78);
   --warning-foreground: oklch(0.24 0.05 70);
-  --info: oklch(0.55 0.16 248);
-  --info-foreground: oklch(1 0 0);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.55 0.16 248);
-  --chart-1: oklch(0.55 0.16 248);
-  --chart-2: oklch(0.55 0.22 27);
-  --chart-3: oklch(0.7 0.13 155);
-  --chart-4: oklch(0.7 0.09 246);
-  --chart-5: oklch(0.75 0.15 40);
-  --sidebar: oklch(0.19 0.035 252);
-  --sidebar-foreground: oklch(0.93 0.008 250);
-  --sidebar-primary: oklch(0.55 0.16 248);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.28 0.045 250);
-  --sidebar-accent-foreground: oklch(0.97 0.006 250);
-  --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.55 0.16 248);
+  --info: #1e90ff;
+  --info-foreground: #ffffff;
+  --border: rgb(255 255 255 / 12%);
+  --input: rgb(255 255 255 / 16%);
+  --ring: #1e90ff;
+  --chart-1: #5aadff;
+  --chart-2: #ff4d4d;
+  --chart-3: #4caf50;
+  --chart-4: #1e90ff;
+  --chart-5: oklch(0.8 0.15 78);
+  --sidebar: #0f2b3f;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #1e90ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(255 255 255 / 10%);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 12%);
+  --sidebar-ring: #1e90ff;
 }
 
 @layer base {
@@ -191,10 +205,6 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
-}
-
-@utility topbar-gradient {
-  background-image: var(--gradient-header);
 }
 
 /* Custom scrollbars */

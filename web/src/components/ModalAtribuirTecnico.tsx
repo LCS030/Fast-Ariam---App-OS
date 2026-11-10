@@ -67,7 +67,7 @@ export const ModalAtribuirTecnico: React.FC<Props> = ({ isOpen, os, tecnicos, on
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs ring-2 ring-border">
+                    <div className="w-9 h-9 rounded-full bg-primary/20 text-primary-strong flex items-center justify-center font-bold text-xs ring-2 ring-border">
                       {t.nome.slice(0, 2).toUpperCase()}
                     </div>
                     <div>
@@ -75,7 +75,7 @@ export const ModalAtribuirTecnico: React.FC<Props> = ({ isOpen, os, tecnicos, on
                       <p className="text-[10px] text-muted-foreground">{t.email}</p>
                     </div>
                   </div>
-                  {isSelected && <UserCheck className="w-5 h-5 text-primary" />}
+                  {isSelected && <UserCheck className="w-5 h-5 text-primary-strong" />}
                 </button>
               );
             })

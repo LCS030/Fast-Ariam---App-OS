@@ -470,6 +470,7 @@ def test_conexao_com_o_banco_exige_tls_no_postgres(monkeypatch):
     from app.db import database
     assert database._connect_args("sqlite:///x.db") == {}  # testes
     monkeypatch.delenv("DB_SSLMODE", raising=False)
+    monkeypatch.delenv("DB_SSLROOTCERT", raising=False)  # o .env de produção define a CA; o teste não pode depender dele
     assert database._connect_args("postgresql+psycopg2://u:p@h:5432/d") == {"sslmode": "require"}
     monkeypatch.setenv("DB_SSLMODE", "verify-full")
     monkeypatch.setenv("DB_SSLROOTCERT", "/certs/ca.crt")

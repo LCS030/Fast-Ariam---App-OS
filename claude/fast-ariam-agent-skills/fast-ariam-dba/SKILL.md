@@ -40,8 +40,8 @@ Ver SDD seção 4. As entidades principais são:
 - `cliente`: razão social, código externo/manual, contatos, endereço, estado ativo.
 - `ordem_servico`: OS, cliente, técnico atribuído, status, datas, cancelamento e histórico.
 - `visita`: uma execução em campo associada à OS; uma OS possui várias visitas.
-- `equipamento_modelo` (v0.5, proposta): catálogo de modelos; nome único sem diferenciar maiúsculas; desativação lógica.
-- `os_equipamento` (v0.5, proposta): vínculo OS × modelo + número de série (único por OS sem diferenciar maiúsculas); FKs `RESTRICT`; RLS sem políticas (SEG-20). Migração em fases com `is_legado` (SDD 4.8 e 4.9; próxima migração livre: 0007).
+- `equipamento_modelo` (v0.5, aplicada em 08/11/2026): catálogo de modelos; nome único sem diferenciar maiúsculas; desativação lógica.
+- `os_equipamento` (v0.5, aplicada em 08/11/2026): vínculo OS × modelo + número de série (único por OS sem diferenciar maiúsculas); FKs `RESTRICT`; RLS sem políticas (SEG-20). Migração em fases com `is_legado` (SDD 4.8 e 4.9; migração `0007`; próxima migração livre: 0014).
 - `servico_equipamento`: registro de serviço de um equipamento da OS em uma visita (v0.5: `id_os_equipamento`, `conserto_salvo_em`, `is_legado`; série/nome legados somente leitura).
 - `servico_defeito`: defeitos/subdefeitos de um equipamento.
 - `servico_foto`: fotos de defeito e conserto por equipamento.
@@ -112,7 +112,7 @@ A SDD registra divergência entre relato de fotos no Supabase e código que salv
 - Inventariar valores reais das colunas `*_url`, `servico_foto.url` e `comprovante.url`.
 - Confirmar buckets, objetos e persistência do disco em produção com o responsável técnico.
 - Produzir contagem, checksum/reconciliação, relatório de órfãos e estratégia de reprocessamento.
-- A proposta é bucket privado `fast-ariam-privado`, paths por OS/visita/categoria/UUID e URL assinada curta gerada pela API após autorização.
+- Implementado (v0.6, migração `0013`): bucket privado `fast-ariam-privado`, objetos em `uploads/` e `assinaturas/` (assinaturas cifradas, `.enc`), acesso só pelo backend com a chave de serviço, depois da autorização da API; RLS em `storage.objects` sem políticas.
 - Não gravar bytes de imagem no PostgreSQL sem decisão arquitetural explícita. A base guarda referências/caminhos e metadados necessários.
 
 ## Performance

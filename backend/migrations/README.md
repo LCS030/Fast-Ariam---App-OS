@@ -24,7 +24,7 @@ executado em PostgreSQL** (nao havia instancia local); revise e teste num branch
 | - | deploy do Backend novo | | usa `por_usuario_id`/`por_papel`, colunas novas, `Pendente` sem tecnico |
 | 3 | `0003_legado_manual.sql` | assistido (tudo comentado) | se o inventario mostrar `Aberto/Pendente` com tecnico, canceladas sem motivo etc. |
 | 2 | `0002_constraints_estado.sql` (+ `0002_rollback.sql`) | ENDURECER | so depois do backend novo e do legado resolvido |
-| 5 | `0005_rls_opcional.sql` (+ `0005_rollback.sql`) | opcional (SEG-12) | apos confirmar que o usuario do `DATABASE_URL` e dono/BYPASSRLS |
+| 5 | `0005_rls_opcional.sql` (+ `0005_rollback.sql`) | opcional (SEG-12) | apos confirmar que o usuario do `DATABASE_URL` e dono/BYPASSRLS | **RLS LIGADO no Supabase real, conferido em 11/11/2026** (`relrowsecurity = true` nas 17 tabelas de `public`, `pg_policies` vazio). Nao ha registro aqui de quando/por qual script foi ligado (0005 ou parte3 da 0007). |
 | 6 | `0006_indices_fk_opcional.sql` | opcional | quando houver volume e plano de execucao que justifique |
 | 4 | `0004_contracao_opcional.sql` (+ `0004_rollback.sql`) | CONTRAIR (destrutivo) | por ultimo, depois de o Backend nao usar mais `por_tecnico_id`/`is_completed` |
 | 7 | `0007_equipamento_os.sql` (+ `0007_rollback.sql`) | EXPANDIR + BACKFILL (SDD v0.5, 4.8/4.9) | backup + ensaio em dump local antes; compativel com o backend antigo; depois, deploy do Backend v0.5 (dois modos) | **APLICADA no Supabase real em 08/11/2026 (MCP).**
@@ -132,6 +132,9 @@ com estes objetos e os mesmos nomes dos models.
 - `km_total` NOT NULL sem default; varios NOT NULL sem default no banco (status, is_cancelled, em_garantia, ...).
 - RLS desligado nas 10 tabelas (advisor ERROR `rls_disabled_in_public`; anon/authenticated com DML total). Donas: `postgres`
   (BYPASSRLS). Tambem alertas `pg_graphql_*_table_exposed`.
+  **Atualizacao 11/11/2026:** situacao superada. Consulta a `pg_class` mostrou `relrowsecurity = true` em todas as 17
+  tabelas de `public` (incluindo `equipamento_modelo`, `os_equipamento`, `sync_evento`, `sync_arquivo`, `log_acao`,
+  `custo_os` e `configuracao_custo`) e `pg_policies` vazio: anon/authenticated sem acesso. A API segue funcionando (dono/BYPASSRLS).
 - Arquivos: 11 referencias locais `/static/...` (7 em `visita`, 4 em `servico_foto`), 0 paths de Storage, 4 `url=''`
   (3 em `servico_foto`, 1 em `visita.foto_fim_volta_url`) - dados sujos; migracao para o bucket e tarefa do Backend (SDD 9).
 - `visita 1` tem `hora_*` com `''` e `km_total=30` divergente da formula SDD (km_fim_volta NULL); legado de teste.
@@ -139,5 +142,6 @@ com estes objetos e os mesmos nomes dos models.
 
 ## Pendencias
 Alembic (revisoes a partir destes SQL); teste dos scripts em Postgres limpo e em copia dos dados; decisao RN-08a; decisao
-sobre `Aberto` com tecnico e `Pendente` com tecnico (se aparecerem); conferir usuario do `DATABASE_URL` antes do RLS;
-migracao de arquivos para o Storage; indice parcial unico de pausa ativa por visita (proposta, nao incluida).
+sobre `Aberto` com tecnico e `Pendente` com tecnico (se aparecerem); indice parcial unico de pausa ativa por visita (proposta,
+nao incluida). Concluidos: RLS ligado e conferido (11/11/2026); migracao de arquivos para o Storage privado (0013 +
+`scripts/migrar_arquivos_para_storage.py`, 09/11/2026).

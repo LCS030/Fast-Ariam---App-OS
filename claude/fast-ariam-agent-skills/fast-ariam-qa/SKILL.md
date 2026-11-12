@@ -11,7 +11,7 @@ Proteger o Fast Ariam contra regressões, violações de regras, perda de dados,
 
 ## Leitura obrigatória
 
-Antes dos testes, leia `PROJECT_CONTEXT.md`, consulte os critérios `CA-01` a `CA-37` do PRD e os testes `T-01` a `T-59` da SDD (T-37 a T-59 e CA-25 a CA-37 são da regra de equipamento da v0.5, ainda sem implementação). Consulte também o contrato da rota ou modelo afetado. Se um critério estiver obsoleto ou conflitar com regra v0.2, registre a divergência antes de usá-lo como oráculo.
+Antes dos testes, leia `PROJECT_CONTEXT.md`, consulte os critérios `CA-01` a `CA-37` do PRD e os testes `T-01` a `T-59` da SDD (T-37 a T-59 e CA-25 a CA-37 são da regra de equipamento da v0.5, já implementada; T-60 a T-112 cobrem a confidencialidade e a integridade da v0.6). Consulte também o contrato da rota ou modelo afetado. Se um critério estiver obsoleto ou conflitar com regra v0.2, registre a divergência antes de usá-lo como oráculo.
 
 ## Responsabilidades
 

@@ -55,7 +55,7 @@ fast-ariam-agent-skills/
 - Imagens JPEG/PNG até 15 MB; Supabase Storage privado.
 - Ajudantes e notificações fora do escopo.
 - Desativação de técnico desatribui automaticamente todas as OS não finalizadas e não canceladas (RN-08a, resolvida em 07/11/2026).
-- **Equipamento da OS (v0.5, 08/11/2026):** o técnico não cadastra equipamento; o admin mantém o catálogo de modelos e vincula modelo + série na OS (toda OS tem ao menos um equipamento). Atendimento só inicia com foto de defeito e só finaliza com conserto salvo + foto de conserto, por equipamento. Admin corrige fotos e materiais apenas com a OS Finalizada, e a correção de materiais recalcula o custo com os valores congelados (RN-49). Situação: backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 346 testes automatizados em SQLite e um smoke ponta a ponta (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), mas o backend novo ainda NÃO foi executado contra esse PostgreSQL; painel web (`web/`) e app do técnico (`frontend/`, com outbox offline) implementados, `tsc` sem erros, mas NÃO executados em navegador/aparelho nem contra o backend; nenhum controle SEG-xx foi verificado em PostgreSQL.
+- **Equipamento da OS (v0.5, 08/11/2026):** o técnico não cadastra equipamento; o admin mantém o catálogo de modelos e vincula modelo + série na OS (toda OS tem ao menos um equipamento). Atendimento só inicia com foto de defeito e só finaliza com conserto salvo + foto de conserto, por equipamento. Admin corrige fotos e materiais apenas com a OS Finalizada, e a correção de materiais recalcula o custo com os valores congelados (RN-49). Situação: backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 414 testes automatizados em SQLite (v0.6, 09/11/2026) e um smoke ponta a ponta da v0.5 (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), seguidas das migrações `0010` a `0013` da v0.6. Entre 09 e 11/11/2026 o backend foi executado contra esse PostgreSQL, o painel web foi aberto no navegador e o app do técnico foi usado contra o backend nas verificações manuais de segurança registradas na SDD v0.6.1 (RLS, TLS `verify-full`, storage privado, JWT adulterado, hash de upload, selo da visita e cifra adulterada); a suíte de regras de negócio ainda não foi repetida contra o PostgreSQL.
 
 O PRD v0.5 define o comportamento do produto; a SDD v0.5 define os contratos técnicos. A API é a única fonte de verdade. O painel e o app não acessam diretamente o Supabase.
 
@@ -173,7 +173,7 @@ Uma entrega não está pronta quando apenas compila. Verificar:
 12. Status `Pendente` sempre sem técnico; `Aberto` não é persistido em novas operações.
 13. Custos globais e congelados na finalização; sem configuração por técnico.
 14. Sessão offline até 24 h sem refresh token; outbox preservada.
-15. Imagens JPEG/PNG até 15 MB em bucket privado; URLs assinadas somente pela API.
+15. Imagens JPEG/PNG até 15 MB em bucket privado; leitura somente pelas rotas autenticadas da API, com autorização por OS (implementado na v0.6; URLs assinadas não são emitidas).
 16. TLS/certificados válidos em trânsito; nenhuma chave/credencial privilegiada em front, bundle, log ou repositório.
 17. Controles de autenticação, autorização, rotação/revogação de chaves e gestão de segredos revisados pelo Security.
 18. Integridade de arquivos/eventos e auditoria verificadas; não declarar não repúdio criptográfico com base apenas na imagem de assinatura.
@@ -202,7 +202,7 @@ Uma entrega não está pronta quando apenas compila. Verificar:
 - Foto de conserto: menor lado ≥ 960 e maior lado ≥ 1280, em qualquer orientação. Tempo de serviço de visita pausada conta zero no custo.
 - CPF/CNPJ do técnico com máscara canônica (14/18); CPF do cliente na visita só dígitos (11).
 - Dev e produção compartilham o mesmo projeto Supabase (risco aceito pelo PO; Security mantém a ressalva). Não declarar SEG-xx como verificado com base apenas em testes SQLite.
-- **Equipamento da OS (v0.5, confirmado em 08/11/2026; backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 346 testes automatizados em SQLite e um smoke ponta a ponta (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), mas o backend novo ainda NÃO foi executado contra esse PostgreSQL; painel web (`web/`) e app do técnico (`frontend/`, com outbox offline) implementados, `tsc` sem erros, mas NÃO executados em navegador/aparelho nem contra o backend; nenhum controle SEG-xx foi verificado em PostgreSQL):** o técnico não cadastra nem edita equipamento, modelo ou série; o admin mantém o catálogo de modelos e vincula modelo + série na OS (um ou mais). Toda OS tem ao menos um equipamento (OS sem equipamento não é criada). Atendimento só inicia com foto de defeito por equipamento e só finaliza com conserto salvo + foto de conserto por equipamento (409), a cada visita; pausa dispensa. Admin edita equipamento só até o início do atendimento e, com a OS Finalizada, apenas fotos comprobatórias e materiais (auditado; o custo é recalculado com os valores congelados). Renomear modelo reescreve o histórico exibido. Contrato em SDD 4.8, 4.9, 6.6, 6.7 e 6.13.
+- **Equipamento da OS (v0.5, confirmado em 08/11/2026; backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 414 testes automatizados em SQLite (v0.6, 09/11/2026) e um smoke ponta a ponta da v0.5 (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), seguidas das migrações `0010` a `0013` da v0.6. Entre 09 e 11/11/2026 o backend foi executado contra esse PostgreSQL, o painel web foi aberto no navegador e o app do técnico foi usado contra o backend nas verificações manuais de segurança registradas na SDD v0.6.1 (RLS, TLS `verify-full`, storage privado, JWT adulterado, hash de upload, selo da visita e cifra adulterada); a suíte de regras de negócio ainda não foi repetida contra o PostgreSQL):** o técnico não cadastra nem edita equipamento, modelo ou série; o admin mantém o catálogo de modelos e vincula modelo + série na OS (um ou mais). Toda OS tem ao menos um equipamento (OS sem equipamento não é criada). Atendimento só inicia com foto de defeito por equipamento e só finaliza com conserto salvo + foto de conserto por equipamento (409), a cada visita; pausa dispensa. Admin edita equipamento só até o início do atendimento e, com a OS Finalizada, apenas fotos comprobatórias e materiais (auditado; o custo é recalculado com os valores congelados). Renomear modelo reescreve o histórico exibido. Contrato em SDD 4.8, 4.9, 6.6, 6.7 e 6.13.
 - Mudança de equipamento/série/foto/material passa por PO (regra), DBA (migração 0007 com `is_legado`), Backend (travas no serviço, não no router), Frontend (somente leitura no app; telas do painel) e QA (T-37 a T-59), na ordem da seção 3 "Feature com alteração de banco".
 
 
@@ -218,7 +218,7 @@ Este arquivo é a referência compacta comum aos seis agentes. Para o contrato c
 
 Fast Ariam (FAST Gôndolas & Check-outs) gerencia OS de manutenção de gôndolas e equipamentos de refrigeração. São três superfícies: painel administrativo web, aplicativo Android do técnico e API FastAPI. Painel e app comunicam exclusivamente com a API; nunca acessam PostgreSQL, Supabase SDK ou Storage diretamente.
 
-Arquitetura: React web + Expo/React Native Android → HTTPS/API FastAPI → PostgreSQL gerenciado pelo Supabase. Fotos, comprovantes e assinaturas devem migrar do disco local atual para Supabase Storage em bucket privado `fast-ariam-privado`.
+Arquitetura: React web + Expo/React Native Android → HTTPS/API FastAPI → PostgreSQL gerenciado pelo Supabase. Fotos, comprovantes e assinaturas (estas cifradas com AES-256-GCM) ficam no bucket privado `fast-ariam-privado` do Supabase Storage desde 09/11/2026; `/static` não é mais servido.
 
 ## 2. Stack documentada
 
@@ -283,7 +283,7 @@ Faturamento, NF, pagamentos, cobrança do cliente, notificações, relatório in
 
 ### Equipamentos da OS (v0.5, confirmado pelo responsável em 08/11/2026)
 
-**Situação (08/11/2026):** Backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 346 testes automatizados em SQLite e um smoke ponta a ponta (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), mas o backend novo ainda NÃO foi executado contra esse PostgreSQL; painel web (`web/`) e app do técnico (`frontend/`, com outbox offline) implementados, `tsc` sem erros, mas NÃO executados em navegador/aparelho nem contra o backend; nenhum controle SEG-xx foi verificado em PostgreSQL.
+**Situação (08/11/2026):** Backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 414 testes automatizados em SQLite (v0.6, 09/11/2026) e um smoke ponta a ponta da v0.5 (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), seguidas das migrações `0010` a `0013` da v0.6. Entre 09 e 11/11/2026 o backend foi executado contra esse PostgreSQL, o painel web foi aberto no navegador e o app do técnico foi usado contra o backend nas verificações manuais de segurança registradas na SDD v0.6.1 (RLS, TLS `verify-full`, storage privado, JWT adulterado, hash de upload, selo da visita e cifra adulterada); a suíte de regras de negócio ainda não foi repetida contra o PostgreSQL.
 
 - O técnico **não** cadastra nem edita equipamento, modelo ou número de série. O admin mantém o catálogo de modelos (`equipamento_modelo`, só o nome; desativação lógica, nome único sem diferenciar maiúsculas) e vincula modelo + série na OS (`os_equipamento`; série única por OS), um ou mais por OS.
 - **Toda OS tem ao menos um equipamento; OS sem equipamento não é criada** (422). OS legada sem equipamento não pode ser atribuída, reagendada nem iniciada até o vínculo.
@@ -333,7 +333,7 @@ Faturamento, NF, pagamentos, cobrança do cliente, notificações, relatório in
 
 ## 9. Storage e operação
 
-- Bucket privado `fast-ariam-privado` no Supabase Storage. A API valida permissão e emite URLs assinadas curtas.
+- Bucket privado `fast-ariam-privado` no Supabase Storage (implementado na v0.6). A API valida a permissão sobre a OS e entrega o arquivo pelas rotas autenticadas `.../arquivos/conteudo` e `.../assinatura`; não emite URLs assinadas.
 - Plano Free atualmente inclui 1 GB de storage e 5 GB de egress; bucket privado é suportado. Projeto Free pode pausar após uma semana de inatividade. Monitorar cotas e avaliar Pro para continuidade/volume de produção.
 - Service key apenas no backend. Nenhum front acessa Storage diretamente.
 - Sem rotina de exclusão automática nesta versão; aplicar acesso mínimo e backup.
@@ -353,7 +353,7 @@ Faturamento, NF, pagamentos, cobrança do cliente, notificações, relatório in
 
 ## 11. Pendências que permanecem
 
-Não há decisão de negócio bloqueante em aberto (RN-08a foi resolvida em 07/11/2026). Pendências técnicas registradas, ainda **não implementadas**: regra de equipamento da OS da v0.5 (migração 0007, catálogo, vínculo, travas, correção pós-finalização, telas do painel e do app); Storage privado e URLs assinadas (SEG-09); `/api/sync`, outbox e sessão offline de 24 h; Alembic; cookie `HttpOnly` no painel; rate limit de login; auditoria de login e de CRUD; CPF mascarado no painel é só visual (M3); vulnerabilidades transitivas das dependências do Expo.
+Não há decisão de negócio bloqueante em aberto (RN-08a foi resolvida em 07/11/2026). Já implementados: regra de equipamento da OS da v0.5, `/api/sync` com outbox e sessão offline de 24 h, Storage privado (SEG-09) e a camada de confidencialidade e integridade da v0.6. Pendências técnicas registradas, ainda **não implementadas**: Alembic; cookie `HttpOnly` no painel; rate limit de login; auditoria de login e de CRUD; CPF mascarado no painel é só visual (M3); vulnerabilidades transitivas das dependências do Expo.
 
 **Risco aceito pelo PO (07/11/2026):** dev e produção compartilham o mesmo projeto Supabase nesta fase; Security mantém a ressalva (SEG-05, SEG-12, SEG-19).
 
@@ -370,7 +370,7 @@ Não há decisão de negócio bloqueante em aberto (RN-08a foi resolvida em 07/1
 
 O agente Security deve avaliar o produto pelos quatro pilares definidos para o projeto:
 
-- **Confidencialidade:** TLS/HTTPS em trânsito; bucket Supabase privado e autorização por OS; URLs assinadas curtas emitidas pela API; proteção dos dados offline e gestão segura de chaves simétricas quando houver criptografia de aplicação. Nunca embutir segredo compartilhado em painel ou app.
+- **Confidencialidade:** TLS/HTTPS em trânsito; bucket Supabase privado e autorização por OS; entrega de arquivos só pelas rotas autenticadas da API; proteção dos dados offline; criptografia de aplicação AES-256-GCM implementada (v0.6), com chaves simétricas distintas por finalidade, validadas na inicialização e mantidas fora do repositório. Nunca embutir segredo compartilhado em painel ou app.
 - **Autenticação:** validar certificado TLS do servidor e, quando necessário, projetar autenticação assimétrica por pares de chaves. A SDD v0.4 documenta JWT HS256, que usa segredo compartilhado; não afirmar que esse mecanismo é assimétrico. Qualquer migração para RS256/EdDSA, mTLS ou chave por dispositivo precisa de análise de impacto, plano de ciclo de vida das chaves e aprovação antes de alterar contrato.
 - **Integridade:** hashes criptográficos como SHA-256/384 para verificar arquivos/payloads; HMAC para integridade/autenticidade com segredo compartilhado; assinatura digital para conteúdo cuja autoria precise ser verificada. `client_event_id` e idempotência não são, por si, proteção criptográfica contra adulteração.
 - **Não repúdio:** assinatura digital assimétrica verificável, vínculo da chave pública com identidade, política de rotação/revogação, evidência temporal e auditoria protegida. A imagem manuscrita recolhida atualmente na visita não é, sozinha, uma assinatura digital criptográfica nem prova suficiente de não repúdio. Necessidade jurídica/ICP-Brasil deve ser validada com PO e assessoria jurídica.
@@ -522,7 +522,7 @@ Proteger o Fast Ariam contra regressões, violações de regras, perda de dados,
 
 ## Leitura obrigatória
 
-Antes dos testes, leia `PROJECT_CONTEXT.md`, consulte os critérios `CA-01` a `CA-37` do PRD e os testes `T-01` a `T-59` da SDD (T-37 a T-59 e CA-25 a CA-37 são da regra de equipamento da v0.5, ainda sem implementação). Consulte também o contrato da rota ou modelo afetado. Se um critério estiver obsoleto ou conflitar com regra v0.2, registre a divergência antes de usá-lo como oráculo.
+Antes dos testes, leia `PROJECT_CONTEXT.md`, consulte os critérios `CA-01` a `CA-37` do PRD e os testes `T-01` a `T-59` da SDD (T-37 a T-59 e CA-25 a CA-37 são da regra de equipamento da v0.5, já implementada; T-60 a T-112 cobrem a confidencialidade e a integridade da v0.6). Consulte também o contrato da rota ou modelo afetado. Se um critério estiver obsoleto ou conflitar com regra v0.2, registre a divergência antes de usá-lo como oráculo.
 
 ## Responsabilidades
 
@@ -677,8 +677,8 @@ Ver SDD seção 4. As entidades principais são:
 - `cliente`: razão social, código externo/manual, contatos, endereço, estado ativo.
 - `ordem_servico`: OS, cliente, técnico atribuído, status, datas, cancelamento e histórico.
 - `visita`: uma execução em campo associada à OS; uma OS possui várias visitas.
-- `equipamento_modelo` (v0.5, proposta): catálogo de modelos; nome único sem diferenciar maiúsculas; desativação lógica.
-- `os_equipamento` (v0.5, proposta): vínculo OS × modelo + número de série (único por OS sem diferenciar maiúsculas); FKs `RESTRICT`; RLS sem políticas (SEG-20). Migração em fases com `is_legado` (SDD 4.8 e 4.9; próxima migração livre: 0007).
+- `equipamento_modelo` (v0.5, aplicada em 08/11/2026): catálogo de modelos; nome único sem diferenciar maiúsculas; desativação lógica.
+- `os_equipamento` (v0.5, aplicada em 08/11/2026): vínculo OS × modelo + número de série (único por OS sem diferenciar maiúsculas); FKs `RESTRICT`; RLS sem políticas (SEG-20). Migração em fases com `is_legado` (SDD 4.8 e 4.9; migração `0007`; próxima migração livre: 0014).
 - `servico_equipamento`: registro de serviço de um equipamento da OS em uma visita (v0.5: `id_os_equipamento`, `conserto_salvo_em`, `is_legado`; série/nome legados somente leitura).
 - `servico_defeito`: defeitos/subdefeitos de um equipamento.
 - `servico_foto`: fotos de defeito e conserto por equipamento.
@@ -749,7 +749,7 @@ A SDD registra divergência entre relato de fotos no Supabase e código que salv
 - Inventariar valores reais das colunas `*_url`, `servico_foto.url` e `comprovante.url`.
 - Confirmar buckets, objetos e persistência do disco em produção com o responsável técnico.
 - Produzir contagem, checksum/reconciliação, relatório de órfãos e estratégia de reprocessamento.
-- A proposta é bucket privado `fast-ariam-privado`, paths por OS/visita/categoria/UUID e URL assinada curta gerada pela API após autorização.
+- Implementado (v0.6, migração `0013`): bucket privado `fast-ariam-privado`, objetos em `uploads/` e `assinaturas/` (assinaturas cifradas, `.enc`), acesso só pelo backend com a chave de serviço, depois da autorização da API; RLS em `storage.objects` sem políticas.
 - Não gravar bytes de imagem no PostgreSQL sem decisão arquitetural explícita. A base guarda referências/caminhos e metadados necessários.
 
 ## Performance
@@ -892,7 +892,7 @@ Não enviar status em formatos inventados como `AGENDADO`, `EM_ATENDIMENTO`, `CO
 - Motivos de pausa precisam ser enum compartilhado; `Outro` exige descrição.
 - Não preencher campos vazios com dados fictícios/defaults que alterem significado.
 
-A SDD propõe Supabase Storage privado (`fast-ariam-privado`) com paths por OS/visita/categoria/UUID e URLs assinadas após autorização. Como o código descrito ainda salva em disco local, verificar produção e situação real antes de migrar. Não afirmar migração concluída sem comprovação.
+Implementado na v0.6 (09/11/2026): buckets privados `fast-ariam-privado` e `fast-ariam-privado-dev`, sem políticas em `storage.objects`; objetos em `uploads/` e `assinaturas/` (assinaturas cifradas, `.enc`); leitura só pelas rotas autenticadas da API (`.../arquivos/conteudo`, `.../assinatura`), sem URLs assinadas; 17 arquivos migrados e conferidos por SHA-256 (`scripts/migrar_arquivos_para_storage.py`). Toda nova credencial de serviço externo deve ser neutralizada no `conftest.py` antes de entrar no `.env` (SDD 9).
 
 ## Custos
 
@@ -928,7 +928,7 @@ O custo é registro interno, não cobrança. Considerar materiais, quilometragem
 - Teste negativo para transição/permissão/validação inválida.
 - Teste de regressão vinculado ao PR correspondente.
 - Se offline: repetição de evento, ordenação, arquivo fora de ordem e falha parcial.
-- Se Storage: acesso privado, URL assinada, autorização e falha/retry.
+- Se Storage: acesso privado, autorização por OS na rota autenticada, SHA-256 conferido e falha/retry (503).
 - Se schema: migration testada com DBA e QA.
 
 Usar os testes T-01 a T-23 da SDD como baseline. Atualizar testes e documentação com cada alteração.
@@ -1138,7 +1138,7 @@ Objetivo: impedir que pessoas ou componentes não autorizados leiam informaçõe
 Controles esperados:
 
 - **Em trânsito:** exigir HTTPS com TLS moderno e certificado válido para painel, aplicativo, API e integrações. Não aceitar downgrade para HTTP, não desabilitar validação de certificado e não implementar criptografia de transporte própria.
-- **Em repouso:** utilizar criptografia provida pela plataforma de armazenamento/banco e avaliar criptografia adicional na aplicação para dados cujo modelo de ameaça justifique. Para arquivos privados, usar bucket privado e autorização por recurso; URL assinada é temporária e só pode ser emitida pela API após checar a permissão do usuário sobre a OS.
+- **Em repouso:** utilizar criptografia provida pela plataforma de armazenamento/banco e avaliar criptografia adicional na aplicação para dados cujo modelo de ameaça justifique. Para arquivos privados, usar bucket privado e autorização por recurso; a entrega é feita pela própria API após checar a permissão do usuário sobre a OS (implementado na v0.6; se um dia houver URL assinada, ela deve ser temporária e emitida só pela API).
 - **Criptografia simétrica de aplicação:** quando necessária, preferir cifra autenticada, como AES-256-GCM ou ChaCha20-Poly1305, por biblioteca consolidada. A chave secreta compartilhada deve ser gerada por fonte criptograficamente segura, mantida fora do repositório e dos aplicativos cliente, limitada aos serviços que precisam dela e sujeita a rotação e revogação.
 - Nunca embutir uma chave simétrica global no JavaScript do painel, no bundle Android ou no aplicativo. Um segredo distribuído a todos os clientes pode ser extraído e deixa de ser segredo.
 - Separar chaves por finalidade (por exemplo, criptografia de dados, assinatura e JWT). Não reutilizar uma mesma chave para cifrar, assinar e autenticar mensagens.
@@ -1209,7 +1209,7 @@ Avaliar e acompanhar, sem presumir implementação, os requisitos SEG-01 a SEG-1
 - Upload com validação de MIME real JPEG/PNG, tamanho máximo de 15 MB e resolução mínima apenas para foto de conserto.
 - Fotos/assinaturas acessíveis apenas a quem tem autorização sobre a OS; técnico só lê clientes vinculados às próprias OS.
 - `SUPABASE_SERVICE_KEY` exclusivamente no backend; policies/RLS adequadas; token, fila e arquivos locais protegidos no Android.
-- Bucket privado, URLs assinadas curtas emitidas pela API e backup/acesso mínimo.
+- Bucket privado, entrega de arquivos só pela API autenticada e backup/acesso mínimo.
 - Sincronização deve rejeitar técnico inativo e OS fora da atribuição; auditar conflitos sem perder silenciosamente os registros.
 
 O agente deve manter matriz de rastreabilidade `SEG → ameaça → controle → componente → teste → evidência → status`. Status permitidos: `não avaliado`, `não implementado`, `parcial`, `implementado`, `verificado` ou `aceito como risco`. Use `verificado` somente depois de teste/evidência reproduzível.
@@ -1232,7 +1232,7 @@ Para cada demanda de segurança:
 ### Confidencialidade
 
 - Requisições HTTP sem TLS são redirecionadas/bloqueadas conforme ambiente; certificados inválidos não são aceitos.
-- Bucket não é público; URL assinada expirada ou adulterada não permite acesso.
+- Bucket não é público (o link público retorna 404); o arquivo só sai pela rota autenticada da API para quem tem acesso à OS (401 sem token, 403 para outro técnico).
 - Técnico não acessa OS/cliente/arquivo de outro técnico alterando IDs ou paths.
 - Segredos não aparecem em bundles, logs, respostas de API, Git ou artefatos de build.
 - Token, CPF, dados bancários e arquivos locais recebem o nível de proteção documentado.
@@ -1277,7 +1277,7 @@ Para uma revisão ou implementação relevante, entregar:
 ## 10. Handoff e colaboração
 
 - **PO:** decidir nível de garantia, escopo de evidência/assinatura, impacto ao usuário, risco residual e necessidade de requisito novo.
-- **Backend:** TLS/configuração de API, autenticação, autorização, assinatura/verificação, criptografia, URLs assinadas, validação de upload, gestão de sessão, rate limiting e auditoria.
+- **Backend:** TLS/configuração de API, autenticação, autorização, assinatura/verificação, criptografia, entrega autenticada de arquivos, validação de upload, gestão de sessão, rate limiting e auditoria.
 - **DBA:** privilégio mínimo, RLS/policies, isolamento de dados, migrações, backup, proteção e trilha de auditoria.
 - **Frontend:** não persistir/expor segredos, proteger sessão e dados locais, validar certificado sem bypass, evitar XSS e apresentar estados de autenticação/falha.
 - **QA:** testes de autenticação, autorização, IDOR, manipulação, replay, vazamento, integridade, assinatura e regressão.

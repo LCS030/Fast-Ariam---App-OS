@@ -45,7 +45,7 @@ Objetivo: impedir que pessoas ou componentes não autorizados leiam informaçõe
 Controles esperados:
 
 - **Em trânsito:** exigir HTTPS com TLS moderno e certificado válido para painel, aplicativo, API e integrações. Não aceitar downgrade para HTTP, não desabilitar validação de certificado e não implementar criptografia de transporte própria.
-- **Em repouso:** utilizar criptografia provida pela plataforma de armazenamento/banco e avaliar criptografia adicional na aplicação para dados cujo modelo de ameaça justifique. Para arquivos privados, usar bucket privado e autorização por recurso; URL assinada é temporária e só pode ser emitida pela API após checar a permissão do usuário sobre a OS.
+- **Em repouso:** utilizar criptografia provida pela plataforma de armazenamento/banco e avaliar criptografia adicional na aplicação para dados cujo modelo de ameaça justifique. Para arquivos privados, usar bucket privado e autorização por recurso; a entrega é feita pela própria API após checar a permissão do usuário sobre a OS (implementado na v0.6; se um dia houver URL assinada, ela deve ser temporária e emitida só pela API).
 - **Criptografia simétrica de aplicação:** quando necessária, preferir cifra autenticada, como AES-256-GCM ou ChaCha20-Poly1305, por biblioteca consolidada. A chave secreta compartilhada deve ser gerada por fonte criptograficamente segura, mantida fora do repositório e dos aplicativos cliente, limitada aos serviços que precisam dela e sujeita a rotação e revogação.
 - Nunca embutir uma chave simétrica global no JavaScript do painel, no bundle Android ou no aplicativo. Um segredo distribuído a todos os clientes pode ser extraído e deixa de ser segredo.
 - Separar chaves por finalidade (por exemplo, criptografia de dados, assinatura e JWT). Não reutilizar uma mesma chave para cifrar, assinar e autenticar mensagens.
@@ -116,7 +116,7 @@ Avaliar e acompanhar, sem presumir implementação, os requisitos SEG-01 a SEG-1
 - Upload com validação de MIME real JPEG/PNG, tamanho máximo de 15 MB e resolução mínima apenas para foto de conserto.
 - Fotos/assinaturas acessíveis apenas a quem tem autorização sobre a OS; técnico só lê clientes vinculados às próprias OS.
 - `SUPABASE_SERVICE_KEY` exclusivamente no backend; policies/RLS adequadas; token, fila e arquivos locais protegidos no Android.
-- Bucket privado, URLs assinadas curtas emitidas pela API e backup/acesso mínimo.
+- Bucket privado, entrega de arquivos só pela API autenticada e backup/acesso mínimo.
 - Sincronização deve rejeitar técnico inativo e OS fora da atribuição; auditar conflitos sem perder silenciosamente os registros.
 
 O agente deve manter matriz de rastreabilidade `SEG → ameaça → controle → componente → teste → evidência → status`. Status permitidos: `não avaliado`, `não implementado`, `parcial`, `implementado`, `verificado` ou `aceito como risco`. Use `verificado` somente depois de teste/evidência reproduzível.
@@ -139,7 +139,7 @@ Para cada demanda de segurança:
 ### Confidencialidade
 
 - Requisições HTTP sem TLS são redirecionadas/bloqueadas conforme ambiente; certificados inválidos não são aceitos.
-- Bucket não é público; URL assinada expirada ou adulterada não permite acesso.
+- Bucket não é público (o link público retorna 404); o arquivo só sai pela rota autenticada da API para quem tem acesso à OS (401 sem token, 403 para outro técnico).
 - Técnico não acessa OS/cliente/arquivo de outro técnico alterando IDs ou paths.
 - Segredos não aparecem em bundles, logs, respostas de API, Git ou artefatos de build.
 - Token, CPF, dados bancários e arquivos locais recebem o nível de proteção documentado.
@@ -184,7 +184,7 @@ Para uma revisão ou implementação relevante, entregar:
 ## 10. Handoff e colaboração
 
 - **PO:** decidir nível de garantia, escopo de evidência/assinatura, impacto ao usuário, risco residual e necessidade de requisito novo.
-- **Backend:** TLS/configuração de API, autenticação, autorização, assinatura/verificação, criptografia, URLs assinadas, validação de upload, gestão de sessão, rate limiting e auditoria.
+- **Backend:** TLS/configuração de API, autenticação, autorização, assinatura/verificação, criptografia, entrega autenticada de arquivos, validação de upload, gestão de sessão, rate limiting e auditoria.
 - **DBA:** privilégio mínimo, RLS/policies, isolamento de dados, migrações, backup, proteção e trilha de auditoria.
 - **Frontend:** não persistir/expor segredos, proteger sessão e dados locais, validar certificado sem bypass, evitar XSS e apresentar estados de autenticação/falha.
 - **QA:** testes de autenticação, autorização, IDOR, manipulação, replay, vazamento, integridade, assinatura e regressão.

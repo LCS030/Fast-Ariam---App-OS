@@ -107,7 +107,7 @@ Não enviar status em formatos inventados como `AGENDADO`, `EM_ATENDIMENTO`, `CO
 - Motivos de pausa precisam ser enum compartilhado; `Outro` exige descrição.
 - Não preencher campos vazios com dados fictícios/defaults que alterem significado.
 
-A SDD propõe Supabase Storage privado (`fast-ariam-privado`) com paths por OS/visita/categoria/UUID e URLs assinadas após autorização. Como o código descrito ainda salva em disco local, verificar produção e situação real antes de migrar. Não afirmar migração concluída sem comprovação.
+Implementado na v0.6 (09/11/2026): buckets privados `fast-ariam-privado` e `fast-ariam-privado-dev`, sem políticas em `storage.objects`; objetos em `uploads/` e `assinaturas/` (assinaturas cifradas, `.enc`); leitura só pelas rotas autenticadas da API (`.../arquivos/conteudo`, `.../assinatura`), sem URLs assinadas; 17 arquivos migrados e conferidos por SHA-256 (`scripts/migrar_arquivos_para_storage.py`). Toda nova credencial de serviço externo deve ser neutralizada no `conftest.py` antes de entrar no `.env` (SDD 9).
 
 ## Custos
 
@@ -143,7 +143,7 @@ O custo é registro interno, não cobrança. Considerar materiais, quilometragem
 - Teste negativo para transição/permissão/validação inválida.
 - Teste de regressão vinculado ao PR correspondente.
 - Se offline: repetição de evento, ordenação, arquivo fora de ordem e falha parcial.
-- Se Storage: acesso privado, URL assinada, autorização e falha/retry.
+- Se Storage: acesso privado, autorização por OS na rota autenticada, SHA-256 conferido e falha/retry (503).
 - Se schema: migration testada com DBA e QA.
 
 Usar os testes T-01 a T-23 da SDD como baseline. Atualizar testes e documentação com cada alteração.

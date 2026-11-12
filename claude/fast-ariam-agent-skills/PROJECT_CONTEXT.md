@@ -6,7 +6,7 @@ Este arquivo é a referência compacta comum aos seis agentes. Para o contrato c
 
 Fast Ariam (FAST Gôndolas & Check-outs) gerencia OS de manutenção de gôndolas e equipamentos de refrigeração. São três superfícies: painel administrativo web, aplicativo Android do técnico e API FastAPI. Painel e app comunicam exclusivamente com a API; nunca acessam PostgreSQL, Supabase SDK ou Storage diretamente.
 
-Arquitetura: React web + Expo/React Native Android → HTTPS/API FastAPI → PostgreSQL gerenciado pelo Supabase. Fotos, comprovantes e assinaturas devem migrar do disco local atual para Supabase Storage em bucket privado `fast-ariam-privado`.
+Arquitetura: React web + Expo/React Native Android → HTTPS/API FastAPI → PostgreSQL gerenciado pelo Supabase. Fotos, comprovantes e assinaturas (estas cifradas com AES-256-GCM) ficam no bucket privado `fast-ariam-privado` do Supabase Storage desde 09/11/2026; `/static` não é mais servido.
 
 ## 2. Stack documentada
 
@@ -71,7 +71,7 @@ Faturamento, NF, pagamentos, cobrança do cliente, notificações, relatório in
 
 ### Equipamentos da OS (v0.5, confirmado pelo responsável em 08/11/2026)
 
-**Situação (08/11/2026):** Backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 346 testes automatizados em SQLite e um smoke ponta a ponta (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), mas o backend novo ainda NÃO foi executado contra esse PostgreSQL; painel web (`web/`) e app do técnico (`frontend/`, com outbox offline) implementados, `tsc` sem erros, mas NÃO executados em navegador/aparelho nem contra o backend; nenhum controle SEG-xx foi verificado em PostgreSQL.
+**Situação (08/11/2026):** Backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 414 testes automatizados em SQLite (v0.6, 09/11/2026) e um smoke ponta a ponta da v0.5 (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), seguidas das migrações `0010` a `0013` da v0.6. Entre 09 e 11/11/2026 o backend foi executado contra esse PostgreSQL, o painel web foi aberto no navegador e o app do técnico foi usado contra o backend nas verificações manuais de segurança registradas na SDD v0.6.1 (RLS, TLS `verify-full`, storage privado, JWT adulterado, hash de upload, selo da visita e cifra adulterada); a suíte de regras de negócio ainda não foi repetida contra o PostgreSQL.
 
 - O técnico **não** cadastra nem edita equipamento, modelo ou número de série. O admin mantém o catálogo de modelos (`equipamento_modelo`, só o nome; desativação lógica, nome único sem diferenciar maiúsculas) e vincula modelo + série na OS (`os_equipamento`; série única por OS), um ou mais por OS.
 - **Toda OS tem ao menos um equipamento; OS sem equipamento não é criada** (422). OS legada sem equipamento não pode ser atribuída, reagendada nem iniciada até o vínculo.
@@ -121,7 +121,7 @@ Faturamento, NF, pagamentos, cobrança do cliente, notificações, relatório in
 
 ## 9. Storage e operação
 
-- Bucket privado `fast-ariam-privado` no Supabase Storage. A API valida permissão e emite URLs assinadas curtas.
+- Bucket privado `fast-ariam-privado` no Supabase Storage (implementado na v0.6). A API valida a permissão sobre a OS e entrega o arquivo pelas rotas autenticadas `.../arquivos/conteudo` e `.../assinatura`; não emite URLs assinadas.
 - Plano Free atualmente inclui 1 GB de storage e 5 GB de egress; bucket privado é suportado. Projeto Free pode pausar após uma semana de inatividade. Monitorar cotas e avaliar Pro para continuidade/volume de produção.
 - Service key apenas no backend. Nenhum front acessa Storage diretamente.
 - Sem rotina de exclusão automática nesta versão; aplicar acesso mínimo e backup.
@@ -141,7 +141,7 @@ Faturamento, NF, pagamentos, cobrança do cliente, notificações, relatório in
 
 ## 11. Pendências que permanecem
 
-Não há decisão de negócio bloqueante em aberto (RN-08a foi resolvida em 07/11/2026). Pendências técnicas registradas, ainda **não implementadas**: regra de equipamento da OS da v0.5 (migração 0007, catálogo, vínculo, travas, correção pós-finalização, telas do painel e do app); Storage privado e URLs assinadas (SEG-09); `/api/sync`, outbox e sessão offline de 24 h; Alembic; cookie `HttpOnly` no painel; rate limit de login; auditoria de login e de CRUD; CPF mascarado no painel é só visual (M3); vulnerabilidades transitivas das dependências do Expo.
+Não há decisão de negócio bloqueante em aberto (RN-08a foi resolvida em 07/11/2026). Já implementados: regra de equipamento da OS da v0.5, `/api/sync` com outbox e sessão offline de 24 h, Storage privado (SEG-09) e a camada de confidencialidade e integridade da v0.6. Pendências técnicas registradas, ainda **não implementadas**: Alembic; cookie `HttpOnly` no painel; rate limit de login; auditoria de login e de CRUD; CPF mascarado no painel é só visual (M3); vulnerabilidades transitivas das dependências do Expo.
 
 **Risco aceito pelo PO (07/11/2026):** dev e produção compartilham o mesmo projeto Supabase nesta fase; Security mantém a ressalva (SEG-05, SEG-12, SEG-19).
 
@@ -158,7 +158,7 @@ Não há decisão de negócio bloqueante em aberto (RN-08a foi resolvida em 07/1
 
 O agente Security deve avaliar o produto pelos quatro pilares definidos para o projeto:
 
-- **Confidencialidade:** TLS/HTTPS em trânsito; bucket Supabase privado e autorização por OS; URLs assinadas curtas emitidas pela API; proteção dos dados offline e gestão segura de chaves simétricas quando houver criptografia de aplicação. Nunca embutir segredo compartilhado em painel ou app.
+- **Confidencialidade:** TLS/HTTPS em trânsito; bucket Supabase privado e autorização por OS; entrega de arquivos só pelas rotas autenticadas da API; proteção dos dados offline; criptografia de aplicação AES-256-GCM implementada (v0.6), com chaves simétricas distintas por finalidade, validadas na inicialização e mantidas fora do repositório. Nunca embutir segredo compartilhado em painel ou app.
 - **Autenticação:** validar certificado TLS do servidor e, quando necessário, projetar autenticação assimétrica por pares de chaves. A SDD v0.4 documenta JWT HS256, que usa segredo compartilhado; não afirmar que esse mecanismo é assimétrico. Qualquer migração para RS256/EdDSA, mTLS ou chave por dispositivo precisa de análise de impacto, plano de ciclo de vida das chaves e aprovação antes de alterar contrato.
 - **Integridade:** hashes criptográficos como SHA-256/384 para verificar arquivos/payloads; HMAC para integridade/autenticidade com segredo compartilhado; assinatura digital para conteúdo cuja autoria precise ser verificada. `client_event_id` e idempotência não são, por si, proteção criptográfica contra adulteração.
 - **Não repúdio:** assinatura digital assimétrica verificável, vínculo da chave pública com identidade, política de rotação/revogação, evidência temporal e auditoria protegida. A imagem manuscrita recolhida atualmente na visita não é, sozinha, uma assinatura digital criptográfica nem prova suficiente de não repúdio. Necessidade jurídica/ICP-Brasil deve ser validada com PO e assessoria jurídica.

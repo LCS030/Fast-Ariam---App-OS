@@ -1,5 +1,7 @@
 # Roteiro de teste ponta a ponta — API real (uvicorn + Postgres do Supabase)
 
+> **Nota (11/11/2026):** este roteiro foi escrito para a v0.5. Na v0.6 os arquivos passaram para o bucket privado do Supabase Storage (a API não serve mais `/static`), os dados sensíveis passaram a ser cifrados e as chaves `DATA_ENCRYPTION_KEY`, `INDEX_KEY` e `INTEGRITY_KEY` passaram a ser obrigatórias no `.env` (ver `backend/.env.example` e SDD v0.6/v0.6.1). As seções abaixo que falam de disco local valem só para Storage local (dev/teste).
+
 Base: SDD v0.5 (seções 5, 6.5 a 6.13, 10 e 11/11.1) e PRD v0.5 (seções 6.4 a 6.10 e 12). Este roteiro tem **duas rotas
 equivalentes**: o script automatizado `backend/scripts/smoke_api.py` (poucos minutos) e o roteiro manual pelo Swagger
 (`/docs`). Depois vêm o painel web (pasta `web/`) e o app Android (pasta `frontend/`).
@@ -546,7 +548,7 @@ usa essas variáveis; deixe só `VITE_API_URL` se precisar.) O painel é **onlin
 | 14 | OS **Finalizada** → detalhe | Custo mostrado como congelado (materiais, quilometragem, pedágio, frete, tempo, deslocamento); botão Cancelar **ausente**; "Serviços por equipamento" mostra modelo e série; equipamentos **sem** Corrigir/Adicionar/Remover |
 | 15 | OS **Finalizada** → correção administrativa (fotos e materiais por equipamento): enviar nova foto de conserto, remover uma foto, tentar remover a **última** de um tipo; editar um material e salvar | Foto de conserto abaixo de 960x1280 é recusada; remover a última foto do tipo é recusado; ao salvar materiais o **custo congelado é recalculado** (total muda só pela diferença de materiais) e a OS continua Finalizada; confira as linhas `FOTO_CORRIGIDA_ADMIN`/`MATERIAIS_CORRIGIDOS_ADMIN` na seção 6 |
 | 16 | **Equipe de Técnicos** → desativar o técnico de teste que tem OS Agendada | As OS dele voltam a **Pendente** sem técnico (equipamentos preservados); o técnico passa a **Inativo**; o app dele cai para o login (401) |
-| 17 | Console do navegador (F12 → Network) | Nenhuma chamada fora de `/api` e `/static`; nenhum 500; nenhum token na URL |
+| 17 | Console do navegador (F12 → Network) | Nenhuma chamada fora de `/api` (desde a v0.6 a API não serve mais `/static`); nenhum 500; nenhum token na URL |
 
 ---
 
@@ -604,8 +606,9 @@ Faça **depois** de terminar o painel e o app (as OS que você criou lá também
      (SELECT id_visita FROM visita WHERE id_os IN (SELECT id_os FROM ordem_servico WHERE descricao_cliente LIKE 'TESTE-SMOKE-%')));
    SELECT url FROM sync_arquivo WHERE id_os IN (SELECT id_os FROM ordem_servico WHERE descricao_cliente LIKE 'TESTE-SMOKE-%');
    ```
-   No computador da API: `backend/static/uploads/chamado_<id>_*` e `backend/static/assinaturas/*` (assinaturas têm nome
-   aleatório; cruze pelos URLs acima), ou as pastas de `UPLOAD_DIR`/`ASSINATURA_DIR`, se definidas.
+   Desde a v0.6 os arquivos ficam no bucket privado do Supabase Storage (`uploads/chamado_<id>_*` e `assinaturas/*.enc`;
+   assinaturas têm nome aleatório, cruze pelos URLs acima). Só com Storage local (dev/teste, sem `SUPABASE_URL`) eles ficam em
+   `backend/static/uploads` e `backend/static/assinaturas`, ou nas pastas de `UPLOAD_DIR`/`ASSINATURA_DIR`, se definidas.
 2. **Opção rápida (desativar em vez de apagar)** — se você prefere preservar a auditoria:
    ```sql
    UPDATE tecnico SET is_active = false WHERE nome LIKE 'TESTE-SMOKE-%';
@@ -679,7 +682,7 @@ Faça **depois** de terminar o painel e o app (as OS que você criou lá também
 | 1 | Dev e produção no mesmo Supabase (risco aceito pelo PO, SEG-05/12/19) | Dados de teste ficam misturados aos reais; listas e indicadores do painel/app mostram OS, clientes, técnicos e **modelos de equipamento** de teste | Prefixo `TESTE-SMOKE-`; rodar em horário sem uso; limpar logo (seção 9); avisar a equipe |
 | 2 | Contas de técnico de teste **ativas** com senha aleatória (não impressa) | Contas válidas sem dono até a limpeza | Limpar/desativar logo; o smoke gera a senha aleatória por execução e não a exibe |
 | 3 | O cenário 5 **desativa** técnicos e **desatribui OS** | Se o script fosse apontado para um técnico real, OS reais voltariam a Pendente | O script só desativa técnicos que ele mesmo criou; no roteiro manual/painel use **apenas** `TESTE-SMOKE-` |
-| 4 | Arquivos gravados no **disco do computador da API** (`static/uploads`, `static/assinaturas`), servidos por `/static` sem autenticação (SEG-09 pendente) | Imagens de teste acessíveis por URL enquanto a API estiver no ar; sobram arquivos órfãos após a limpeza do banco | Imagens são sintéticas (sem dados pessoais); apague as pastas (seção 9); não exponha a API à internet durante o teste |
+| 4 | Arquivos de teste gravados no **bucket privado** do Supabase Storage (v0.6; antes, no disco da API servido por `/static`) | Sobram objetos órfãos no bucket após a limpeza do banco; a suíte automatizada não pode herdar `SUPABASE_*` (o `conftest.py` aborta se o armazenamento não for local) | Imagens são sintéticas (sem dados pessoais); remova os objetos de teste do bucket (seção 9); não exponha a API à internet durante o teste |
 | 5 | Linhas em `log_acao` (auditoria), `custo_os`, `sync_evento` e `sync_arquivo` | Poluem a trilha e métricas de custo | O SQL de limpeza apaga as linhas das OS de teste; só faça isso para dados de teste |
 | 6 | Credenciais do admin em variável de ambiente / histórico | Vazamento da senha | Use `Read-Host -AsSecureString`, remova a variável ao fim, troque a senha se ela foi digitada num lugar visível |
 | 7 | `SECRET_KEY` nova | Invalida todos os tokens existentes (sessões de painel e app) | Esperado; avise a equipe |
@@ -716,4 +719,5 @@ Faça **depois** de terminar o painel e o app (as OS que você criou lá também
    Se algo falhar **só** no Supabase, comece por aí e por migrações incompletas (`0000_inventario.sql` e a consulta 0 da seção 6).
 4. **Não cobertos pelo smoke**: telas do painel e do app (seções 7 e 8, a executar manualmente), fila/outbox do aparelho (reabertura do
    app, 24 h offline, JWT expirado), conflito administrativo com a pausa do admin durante o offline (`CONFLITO_ADMINISTRATIVO`, coberto
-   só pelos testes do repositório), Storage privado/URLs assinadas (SEG-09, ainda não implementado) e desempenho/carga.
+   só pelos testes do repositório) e desempenho/carga. O Storage privado (SEG-09) foi implementado na v0.6 e verificado manualmente em
+   11/11/2026 (link público 404, sem token 401, outro técnico 403, admin 200).

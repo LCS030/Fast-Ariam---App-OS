@@ -1,6 +1,6 @@
-# Contexto compartilhado do projeto — Fast Ariam (PRD/SDD v0.5)
+# Contexto compartilhado do projeto — Fast Ariam (PRD v0.5 / SDD v0.7)
 
-Este arquivo é a referência compacta comum aos seis agentes. Para o contrato completo, consultar `references/PRD-Fast-Ariam.md` e `references/SDD-Fast-Ariam.md`. Em caso de divergência, a decisão de negócio do PRD v0.4 (07/11/2026) prevalece sobre texto legado da SDD v0.2/v0.3 ou sobre o código atual; a SDD v0.4 traduz a decisão para o contrato técnico.
+Este arquivo é a referência compacta comum aos seis agentes. Para o contrato completo, consultar `references/PRD-Fast-Ariam.md` e `references/SDD-Fast-Ariam.md`. Em caso de divergência, a decisão de negócio do PRD v0.4 (07/11/2026) prevalece sobre texto legado da SDD v0.2/v0.3 ou sobre o código atual; a SDD (v0.4 a v0.7) traduz a decisão para o contrato técnico.
 
 ## 1. Produto e arquitetura
 
@@ -145,12 +145,14 @@ Não há decisão de negócio bloqueante em aberto (RN-08a foi resolvida em 07/1
 
 **Risco aceito pelo PO (07/11/2026):** dev e produção compartilham o mesmo projeto Supabase nesta fase; Security mantém a ressalva (SEG-05, SEG-12, SEG-19).
 
-**Status honesto dos controles:** os SEG-xx marcados como implementados na SDD v0.4 têm apenas testes automatizados em SQLite; não os trate como verificados até haver teste em PostgreSQL/Supabase e parecer de QA/Security.
+**Status honesto dos controles:** os SEG-xx marcados como implementados na SDD têm apenas testes automatizados em SQLite (exceto os itens que a SDD v0.6.1 registra como conferidos no Supabase real); não os trate como verificados até haver teste em PostgreSQL/Supabase e parecer de QA/Security.
+
+**v0.7 (12/11/2026, cifragem dos dados pessoais restantes, SEG-22 ampliado):** implementado e coberto por testes em SQLite (suíte 526 passando e 2 `xfail`, eram 414): `cliente.contato_principal_nome/telefone`, `visita.nome_cliente_assinatura` e as chaves `documento_cliente`/`nome_cliente` de `sync_evento.payload` cifrados. **A migração `0014` NÃO foi aplicada, o script `cifrar_dados_existentes.py` não foi executado em banco real e nada foi verificado em PostgreSQL/Supabase**; os dados existentes seguem em claro até a janela de execução (humano). Nenhuma instância com o código v0.7 pode apontar para o Supabase compartilhado antes da janela. Em claro por decisão: `cliente.telefone` (comercial), dados cadastrais e textos livres; fila e cache do app (SEG-13) e backups também. Defeitos/riscos abertos: D-V07-2, D-V07-3, R-1 (SDD 8.1).
 
 ## 12. Precedência documental
 
 1. Decisões confirmadas no PRD v0.5.
-2. Contratos técnicos na SDD v0.5.
+2. Contratos técnicos na SDD v0.7.
 3. Código atual como evidência a ser comparada, não como definição de negócio.
 4. Documentos legados v0.2 a v0.4, apenas para histórico; nunca prevalecem sobre v0.5.
 

@@ -1,9 +1,9 @@
 from datetime import date, datetime
 from typing import Annotated, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
-from .base_schemas import MotivoPausa, PayloadComHorario, ServicoEquipamento
+from .base_schemas import MotivoPausa, PayloadComHorario, ServicoEquipamento, validar_texto_armazenavel
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -148,8 +148,10 @@ class PausarPayload(PayloadComHorario):
 
 class FinalizarAtendimentoPayload(PayloadComHorario):
     """Finalizar atendimento (SDD 6.6): nome, CPF e assinatura ficam NA VISITA (RN-22 / RN-23)."""
-    nome_cliente: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
-    documento_cliente: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+    nome_cliente: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
+                            AfterValidator(validar_texto_armazenavel)]
+    documento_cliente: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20),
+                                 AfterValidator(validar_texto_armazenavel)]
     assinatura_base64: str = Field(..., min_length=1)
     assinatura_sha256: Optional[str] = Field(
         None, description="SHA-256 (hex) dos bytes da assinatura, calculado no aparelho; 422 se divergir.")

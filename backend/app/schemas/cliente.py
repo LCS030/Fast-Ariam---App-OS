@@ -1,7 +1,9 @@
 import re
 from typing import Annotated, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator
+
+from .base_schemas import validar_texto_armazenavel
 
 # Limites alinhados às colunas de `cliente` (SDD 4.2): evitam erro de banco (500) por texto longo demais.
 _INT4_MAX = 2147483647
@@ -17,8 +19,11 @@ Endereco = Annotated[str, _texto(200)]
 Numero = Annotated[str, _texto(20)]
 Bairro = Annotated[str, _texto(100)]
 Cidade = Annotated[str, _texto(100)]
-ContatoNome = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
-ContatoTelefone = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20)]
+# Contatos sao cifrados em repouso: NUL/surrogate isolado seriam 500 no bind; recusados aqui (422).
+ContatoNome = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100),
+                        AfterValidator(validar_texto_armazenavel)]
+ContatoTelefone = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20),
+                            AfterValidator(validar_texto_armazenavel)]
 
 _UF_RE = re.compile(r"^[A-Z]{2}$")
 

@@ -277,9 +277,42 @@ def test_verificar_integridade_so_para_admin(fluxo, outro_tecnico):
 
 
 def test_alterar_campo_direto_no_banco_e_acusado_como_adulterado(fluxo, db):
+    """
+    `nome_cliente_assinatura` agora é coluna CIFRADA (v0.7). Quem edita a linha pelo painel do Supabase só consegue gravar:
+    (a) um `enc1:` VÁLIDO de outro nome (precisaria da chave) - o selo acusa `adulterado`; ou
+    (b) texto puro / `enc1:` adulterado - não decifra e é recusado pela camada de cifragem (ver o teste seguinte).
+    """
     _finalizar(fluxo)
-    with engine.begin() as conn:  # equivale a editar a linha no painel do Supabase
+    forjado = crypto.cifrar("Fraudador", "visita.nome_cliente_assinatura")
+    with engine.begin() as conn:  # equivale a editar a linha no painel do Supabase (com acesso à chave)
+        conn.execute(text("UPDATE visita SET nome_cliente_assinatura=:n WHERE id_visita=:i"), {"n": forjado, "i": fluxo.visita_id})
+    corpo = _verificar(fluxo).json()
+    assert corpo["estado"] == "adulterado" and "selo_divergente" in corpo["visitas"][0]["motivos"]
+
+
+def _sem_excecao():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_texto_puro_em_coluna_cifrada_nao_e_aceito_nem_vira_integro_na_verificacao(fluxo, db, monkeypatch):
+    """
+    Edição direta com texto puro no campo cifrado: o laudo é `adulterado` com `campo_cifrado_invalido:<coluna>` (D-V07-1
+    corrigido) - nunca `integro` e nunca 500, e sem expor o valor. O GET da própria OS segue fail-closed (500, aceito).
+    Com o flag de transição ligado o texto é lido e o selo acusa `adulterado` por `selo_divergente`.
+    """
+    _finalizar(fluxo)
+    with engine.begin() as conn:
         conn.execute(text("UPDATE visita SET nome_cliente_assinatura='Fraudador' WHERE id_visita=:i"), {"i": fluxo.visita_id})
+    url = f"/api/chamados/{fluxo.os_id}/verificar-integridade"
+    r = _sem_excecao().get(url, headers=fluxo.admin.headers)
+    assert r.status_code == 200 and "Fraudador" not in r.text
+    corpo = r.json()
+    assert corpo["estado"] == "adulterado" and corpo["visitas"][0]["estado"] == "adulterado"
+    assert corpo["visitas"][0]["motivos"] == ["campo_cifrado_invalido:nome_cliente_assinatura"]
+    monkeypatch.setattr(config, "ENCRYPTION_ALLOW_LEGACY_PLAINTEXT", True)
+    db.expire_all()
     corpo = _verificar(fluxo).json()
     assert corpo["estado"] == "adulterado" and "selo_divergente" in corpo["visitas"][0]["motivos"]
 
@@ -500,25 +533,68 @@ def _carregar_script():
     return modulo
 
 
+# client_event_id fixos (UUID) dos eventos do fixture `banco_legado`; reutilizados em test_cifragem_v07.py
+EVENTOS = {
+    "aplicado": "aaaaaaaa-0000-4000-8000-000000000001",
+    "rejeitado_none": "aaaaaaaa-0000-4000-8000-000000000002",
+    "nao_string": "aaaaaaaa-0000-4000-8000-000000000003",
+    "sem_pessoal": "aaaaaaaa-0000-4000-8000-000000000004",
+    "rejeitado_desconhecido": "aaaaaaaa-0000-4000-8000-000000000005",
+    "nao_dict_lista": "aaaaaaaa-0000-4000-8000-000000000006",
+    "nao_dict_texto": "aaaaaaaa-0000-4000-8000-000000000007",
+}
+
+
 @pytest.fixture()
 def banco_legado(tmp_path):
-    """SQLite temporário no formato 'pós-0011': colunas em texto, cnpj_idx ainda vazio e dados em CLARO."""
-    from sqlalchemy import create_engine
+    """
+    SQLite temporário no formato 'pós-0011/0014': colunas em texto, cnpj_idx ainda vazio e dados em CLARO. Inclui
+    visita.nome_cliente_assinatura, a tabela cliente (contato) e sync_evento (payload JSON, PK UUID) com eventos aplicado,
+    rejeitado, com None, com valor não-string e com payload não-dict.
+    """
+    import uuid
+    from datetime import datetime, timezone
+    from sqlalchemy import create_engine, insert
+    from app.models.sync_evento import SyncEvento
     eng = create_engine(f"sqlite:///{(tmp_path / 'legado.db').as_posix()}")
     with eng.begin() as c:
         c.execute(text("CREATE TABLE tecnico (id_tecnico INTEGER PRIMARY KEY, cnpj TEXT, cpf TEXT, telefone TEXT, "
                        "banco TEXT, agencia TEXT, conta TEXT, pix TEXT, cnpj_idx TEXT)"))
-        c.execute(text("CREATE TABLE visita (id_visita INTEGER PRIMARY KEY, documento_cliente TEXT, assinatura_url TEXT, "
+        c.execute(text("CREATE TABLE visita (id_visita INTEGER PRIMARY KEY, documento_cliente TEXT, "
+                       "nome_cliente_assinatura TEXT, assinatura_url TEXT, "
                        "assinatura_sha256 TEXT, arquivos_sha256 TEXT, odometro_inicio_url TEXT, odometro_fim_url TEXT, "
                        "foto_inicio_ida_url TEXT, foto_fim_ida_url TEXT, foto_inicio_volta_url TEXT, foto_fim_volta_url TEXT)"))
+        c.execute(text("CREATE TABLE cliente (id_cliente INTEGER PRIMARY KEY, contato_principal_nome TEXT, "
+                       "contato_principal_telefone TEXT)"))
         c.execute(text("CREATE TABLE sync_arquivo (client_file_id TEXT PRIMARY KEY, url TEXT, sha256 TEXT)"))
         c.execute(text("CREATE TABLE servico_foto (id_foto INTEGER PRIMARY KEY, url TEXT, sha256 TEXT)"))
         c.execute(text("CREATE TABLE comprovante (id_comprovante INTEGER PRIMARY KEY, url TEXT, sha256 TEXT)"))
         c.execute(text("INSERT INTO tecnico VALUES (1, '11.222.333/0001-81', '529.982.247-25', '(27) 99999-0000', "
                        "'Banco X', '0001', '12345-6', 'pix@x.com', NULL)"))
         c.execute(text("INSERT INTO tecnico VALUES (2, '44.555.666/0001-00', '111.444.777-35', NULL, NULL, NULL, NULL, NULL, NULL)"))
-        c.execute(text("INSERT INTO visita (id_visita, documento_cliente) VALUES (10, '52998224725')"))
+        c.execute(text("INSERT INTO visita (id_visita, documento_cliente, nome_cliente_assinatura) "
+                       "VALUES (10, '52998224725', 'SEGREDO José da Silva 😀')"))
         c.execute(text("INSERT INTO visita (id_visita) VALUES (11)"))
+        c.execute(text("INSERT INTO cliente VALUES (1, 'SEGREDO Maria Souza Ç', '(27) 99999-0000')"))
+        c.execute(text("INSERT INTO cliente VALUES (2, 'João', NULL)"))
+        c.execute(text("INSERT INTO cliente VALUES (3, NULL, NULL)"))
+    SyncEvento.__table__.create(bind=eng)  # tabela real do modelo (UUID e JSON idênticos aos do app)
+    quando = datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc)
+    linhas = {
+        "aplicado": ("aplicado", {"nome_cliente": "SEGREDO Maria 😀", "documento_cliente": "529.982.247-25",
+                                  "assinatura_ref": "ref-1", "ocorrido_em_original": "2026-11-10T10:00:00+00:00"}),
+        "rejeitado_none": ("rejeitado", {"nome_cliente": "", "documento_cliente": None}),
+        "nao_string": ("rejeitado", {"nome_cliente": 52998224725, "documento_cliente": {"cpf": "52998224725"}}),
+        "sem_pessoal": ("aplicado", {"km_inicio": 5}),
+        "rejeitado_desconhecido": ("rejeitado", {"nome_cliente": "José", "documento_cliente": "111.444.777-35"}),
+        "nao_dict_lista": ("rejeitado", []),
+        "nao_dict_texto": ("rejeitado", "texto"),
+    }
+    with eng.begin() as c:
+        for chave, (resultado, payload) in linhas.items():
+            c.execute(insert(SyncEvento.__table__).values(
+                client_event_id=uuid.UUID(EVENTOS[chave]), id_tecnico=1, tipo="atendimento_finalizado", ocorrido_em=quando,
+                resultado=resultado, payload=payload))
     yield eng
     eng.dispose()
 
@@ -528,24 +604,51 @@ def test_script_cifra_preenche_indice_cego_e_e_idempotente(banco_legado):
     feito = mod.cifrar_campos(banco_legado)
     assert feito["tecnico.cpf"] == 2 and feito["tecnico.cnpj_idx"] == 2 and feito["visita.documento_cliente"] == 1
     assert feito["tecnico.pix"] == 1  # NULL não conta
+    # v0.7: nome de quem assinou e contato do cliente (NULL não conta)
+    assert feito["visita.nome_cliente_assinatura"] == 1
+    assert feito["cliente.contato_principal_nome"] == 2 and feito["cliente.contato_principal_telefone"] == 1
     assert all(v == 0 for v in mod.verificar_campos(banco_legado).values())
     with banco_legado.connect() as c:
         cpf, cnpj, idx = c.execute(text("SELECT cpf, cnpj, cnpj_idx FROM tecnico WHERE id_tecnico=1")).fetchone()
+        nome_ass = c.execute(text("SELECT nome_cliente_assinatura FROM visita WHERE id_visita=10")).scalar()
+        contato = c.execute(text("SELECT contato_principal_nome FROM cliente WHERE id_cliente=1")).scalar()
     assert cpf.startswith("enc1:") and crypto.decifrar(cpf, "tecnico.cpf") == "529.982.247-25"
+    assert crypto.decifrar(nome_ass, "visita.nome_cliente_assinatura") == "SEGREDO José da Silva 😀"
+    assert crypto.decifrar(contato, "cliente.contato_principal_nome") == "SEGREDO Maria Souza Ç"
     assert idx == Tecnico.indice_do_cnpj("11.222.333/0001-81") == Tecnico.indice_do_cnpj("11222333000181")
     assert mod.cifrar_campos(banco_legado) == {}  # segunda execução não faz nada (e não re-cifra)
+    # v0.7: o payload do sync_evento (H1) tem a mesma garantia
+    payload = mod.cifrar_payload_sync(banco_legado)
+    assert payload["eventos"] == 4 and payload["sync_evento.payload.nome_cliente"] == 4
+    assert mod.cifrar_payload_sync(banco_legado) == {}
 
 
 def test_script_dry_run_nao_grava_e_decifrar_reverte(banco_legado):
     mod = _carregar_script()
+
+    def _tudo():
+        with banco_legado.connect() as c:
+            return {t: [tuple(r) for r in c.execute(text(f"SELECT * FROM {t} ORDER BY 1")).fetchall()]
+                    for t in ("tecnico", "visita", "cliente", "sync_evento")}
+
+    antes = _tudo()
     assert mod.cifrar_campos(banco_legado, dry_run=True)["tecnico.cpf"] == 2
+    assert mod.cifrar_payload_sync(banco_legado, dry_run=True)["eventos"] == 4
+    assert _tudo() == antes  # dry-run: nenhum byte gravado em nenhuma tabela
     assert mod.verificar_campos(banco_legado)["tecnico.cpf"] == 2  # continua tudo em claro
     mod.cifrar_campos(banco_legado)
+    mod.cifrar_payload_sync(banco_legado)
     revertido = mod.decifrar_campos(banco_legado)
-    assert revertido["tecnico.cpf"] == 2
+    assert revertido["tecnico.cpf"] == 2 and revertido["visita.nome_cliente_assinatura"] == 1
+    assert revertido["cliente.contato_principal_nome"] == 2
+    assert mod.decifrar_payload_sync(banco_legado)["eventos"] == 4
     with banco_legado.connect() as c:
         assert c.execute(text("SELECT cpf FROM tecnico WHERE id_tecnico=1")).scalar() == "529.982.247-25"
         assert c.execute(text("SELECT documento_cliente FROM visita WHERE id_visita=10")).scalar() == "52998224725"
+        assert c.execute(text("SELECT nome_cliente_assinatura FROM visita WHERE id_visita=10")).scalar() == "SEGREDO José da Silva 😀"
+        assert c.execute(text("SELECT contato_principal_nome FROM cliente WHERE id_cliente=1")).scalar() == "SEGREDO Maria Souza Ç"
+    depois = _tudo()
+    assert depois["visita"] == antes["visita"] and depois["cliente"] == antes["cliente"]
 
 
 def test_script_converte_assinatura_confere_e_preenche_hashes(banco_legado):

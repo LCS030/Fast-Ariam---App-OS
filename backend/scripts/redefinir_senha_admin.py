@@ -58,7 +58,7 @@ def _ler_senha() -> str:
 
 
 def _listar_admins(db) -> list:
-    admins = db.query(Tecnico).filter(Tecnico.role == "tecnico").order_by(Tecnico.id_tecnico).all()
+    admins = db.query(Tecnico).filter(Tecnico.role == "admin").order_by(Tecnico.id_tecnico).all()
     if not admins:
         print("Nenhum administrador encontrado.")
     for a in admins:
@@ -91,7 +91,7 @@ def main() -> int:
         if alvo is None and not args.criar:
             print(f"ERRO: nao existe usuario com o e-mail {email}. Use --criar para cria-lo.")
             return 1
-        if alvo is not None and alvo.role != "tecnico":
+        if alvo is not None and alvo.role != "admin":
             print(f"ERRO: {email} existe, mas NAO e admin (papel '{alvo.role}'). Nada foi alterado.")
             return 1
 
@@ -106,7 +106,7 @@ def main() -> int:
                 print(f"ERRO: o CNPJ {args.cnpj} ja esta em uso (UNIQUE). Informe outro com --cnpj.")
                 return 1
             db.add(Tecnico(nome="Administrador", cpf=CPF_MARCADOR, cnpj=args.cnpj, email=email,
-                           password_hash=hash_password(senha), role="tecnico", is_active=True))
+                           password_hash=hash_password(senha), role="admin", is_active=True))
         else:
             alvo.password_hash = hash_password(senha)
             alvo.is_active = True

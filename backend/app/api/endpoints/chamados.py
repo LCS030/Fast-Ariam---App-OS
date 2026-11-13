@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.crypto import ErroDecifragem
 from app.core.security import get_current_active_user, require_admin_role, require_technician_role
 from app.db.database import get_db
+from app.models.chamado import OrdemServico
 from app.repositories.supabase_repository import SQLRepository
 from app.schemas.chamado import (CancelarChamadoPayload, Chamado, ChamadoCreate, ChamadoUpdate, ReagendarPayload)
 from app.schemas.custo import CustoTotalResponse
@@ -495,7 +496,14 @@ def verificar_integridade(
     `estado` por visita: integro | adulterado | sem_selo (finalizada antes do selo) | nao_finalizada. A consulta é
     auditada (INTEGRIDADE_VERIFICADA). Não altera dado algum.
     """
-    chamado = carregar_chamado(repo, chamado_id, admin_user)
+    try:
+        chamado = carregar_chamado(repo, chamado_id, admin_user)
+    except ErroDecifragem:
+        # A arvore da OS inclui a visita com campo cifrado invalido (adulterado): o laudo nao pode depender dela. Carga
+        # leve da OS (mesma regra de 404) e a verificacao reporta a visita como `adulterado` (D-V07-1).
+        chamado = repo.db.get(OrdemServico, chamado_id)
+        if chamado is None or chamado.is_cancelled:
+            raise HTTPException(status_code=404, detail="Chamado não encontrado ou cancelado.")
     resultado = integridade_service.verificar_chamado(repo.db, chamado)
     try:
         auditoria_service.registrar_acao(

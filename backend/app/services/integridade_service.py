@@ -31,14 +31,17 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import select, text
+
 from app.core import config
-from app.core.crypto import ErroDecifragem
+from app.core.crypto import ErroDecifragem, TextoCifrado, decifrar, esta_cifrado
 from app.models.comprovante import Comprovante
 from app.models.log_acao import LogAcao
 from app.models.material import Material
 from app.models.servico_defeito import ServicoDefeito
 from app.models.servico_equipamento import ServicoEquipamento
 from app.models.servico_foto import ServicoFoto
+from app.models.visita import Visita
 from app.services import auditoria_service as auditoria
 from app.services import file_service
 
@@ -222,8 +225,55 @@ def verificar_visita(db, chamado, visita) -> Dict[str, Any]:
     return {"id_visita": visita.id_visita, "estado": ADULTERADO if motivos else INTEGRO, "motivos": motivos}
 
 
+def _campos_cifrados_invalidos(db, id_visita: int) -> List[str]:
+    """
+    Colunas `TextoCifrado` da visita cujo valor bruto NAO e valido: texto puro (com o modo legado desligado) ou `enc1:` que
+    nao autentica (adulterado, de outra coluna ou chave errada). Le o valor BRUTO (SQL), nunca o devolve nem o registra:
+    so os nomes das colunas.
+    """
+    colunas = [c.name for c in Visita.__table__.columns if isinstance(c.type, TextoCifrado)]
+    contextos = {c.name: c.type.contexto for c in Visita.__table__.columns if isinstance(c.type, TextoCifrado)}
+    linha = db.execute(text(f"SELECT {', '.join(colunas)} FROM visita WHERE id_visita = :i"), {"i": id_visita}).fetchone()
+    invalidas: List[str] = []
+    for nome, valor in zip(colunas, linha or ()):
+        if valor is None:
+            continue
+        if not esta_cifrado(valor):
+            if not config.ENCRYPTION_ALLOW_LEGACY_PLAINTEXT:
+                invalidas.append(nome)
+            continue
+        try:
+            decifrar(valor, contextos[nome])
+        except (ErroDecifragem, UnicodeDecodeError):
+            invalidas.append(nome)
+    return invalidas
+
+
+def _visitas_para_verificar(db, chamado):
+    """
+    (id_visita, Visita ou None) por visita da OS. Uma visita cujo campo cifrado nao decifra NAO pode ser carregada pelo ORM
+    (ErroDecifragem): vem como None e vira `adulterado` com `campo_cifrado_invalido:<coluna>` em vez de derrubar o laudo (500).
+    """
+    ids = [i for (i,) in db.execute(select(Visita.id_visita).where(Visita.id_os == chamado.id_os)
+                                    .order_by(Visita.id_visita)).fetchall()]
+    for id_ in ids:
+        try:
+            yield id_, db.get(Visita, id_)
+        except (ErroDecifragem, UnicodeDecodeError):
+            yield id_, None
+
+
 def verificar_chamado(db, chamado) -> Dict[str, Any]:
-    visitas = [verificar_visita(db, chamado, v) for v in sorted(chamado.visitas, key=lambda v: v.id_visita)]
+    visitas = []
+    for id_visita, visita in _visitas_para_verificar(db, chamado):
+        if visita is not None:
+            visitas.append(verificar_visita(db, chamado, visita))
+            continue
+        campos = _campos_cifrados_invalidos(db, id_visita) or ["desconhecido"]
+        logger.error("Visita %s: campo cifrado invalido (%s); verificacao de integridade = adulterado.",
+                     id_visita, ", ".join(campos))
+        visitas.append({"id_visita": id_visita, "estado": ADULTERADO,
+                        "motivos": [f"campo_cifrado_invalido:{c}" for c in campos]})
     estados = {v["estado"] for v in visitas}
     if ADULTERADO in estados:
         geral = ADULTERADO

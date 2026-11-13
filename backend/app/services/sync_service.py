@@ -9,6 +9,7 @@ Sincronização offline (SDD 6.12, PRD RF-20..22 / RN-35..RN-38).
 * `ARQUIVO_AUSENTE` é TRANSITÓRIO: não é gravado, para o app reenviar o mesmo `client_event_id` depois do arquivo (SY-08).
 * Conflito administrativo (SY-05/SY-09) rejeita o evento e leva a OS não finalizada a `Pendente`, sem técnico.
 """
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -16,14 +17,15 @@ from typing import Any, Callable, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.exc import IntegrityError
 
+from app.core import crypto
 from app.core.erros import ErroRegra
 from app.models.sync_arquivo import SyncArquivo
 from app.models.sync_evento import SyncEvento
 from app.repositories.supabase_repository import SQLRepository
-from app.schemas.base_schemas import StatusChamado
+from app.schemas.base_schemas import StatusChamado, validar_texto_armazenavel
 from app.schemas.chamado import Chamado
 from app.schemas.servico_equipamento import ServicoEquipamentoUpdate
 from app.schemas.sync import EventoSync, LoteSync, ResultadoEvento
@@ -55,6 +57,70 @@ class Ctx:
     evento: EventoSync
     ocorrido: datetime
     payload: Dict[str, Any] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Confidencialidade do payload gravado em sync_evento (SEG-22 ampliado, v0.7)
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Chaves do payload com dado pessoal do cliente. A cifragem e POR CHAVE (nao por tipo de evento): `_persistir_rejeicao` e
+# chamada tambem para tipo desconhecido e DEPENDENCIA_REJEITADA, antes de qualquer handler.
+CHAVES_PESSOAIS_PAYLOAD = ("documento_cliente", "nome_cliente")
+
+# Valor gravado (cifrado) quando nem o texto de recuperacao pode ser cifrado; nunca contem dado do aparelho.
+_MARCADOR_INVALIDO = "[valor invalido descartado]"
+
+
+def contexto_payload(chave: str, client_event_id) -> str:
+    """AAD POR LINHA: `sync_evento.<chave>|<client_event_id>`. Um valor cifrado copiado para outro evento nao decifra."""
+    return f"sync_evento.{chave}|{client_event_id}"
+
+
+def _texto_para_cifrar(valor: Any) -> str:
+    """
+    Texto a cifrar para QUALQUER valor, sem nunca lancar: `str` segue como esta (surrogate isolado vira uma sequencia literal
+    de escape, NUL passa); outros tipos viram JSON ASCII (`ensure_ascii=True`, `default=str`).
+    """
+    if isinstance(valor, str):
+        return valor.encode("utf-8", "backslashreplace").decode("utf-8")
+    return json.dumps(valor, ensure_ascii=True, default=str)
+
+
+def cifrar_payload(payload: Dict[str, Any], client_event_id) -> Dict[str, Any]:
+    """
+    Devolve uma COPIA do payload com `documento_cliente`/`nome_cliente` cifrados (`enc1:...`, AAD por linha); o original
+    (que alimenta o handler via `Ctx.payload`) nao e alterado. NUNCA lanca excecao por causa do valor - senao o evento nao
+    seria gravado e a idempotencia (SY-03) quebraria:
+      * ausente -> continua ausente; `None` -> continua `None` (nao ha dado pessoal a proteger);
+      * `str` (inclusive vazia, com NUL ou surrogate isolado) -> cifrada (ver `_texto_para_cifrar`);
+      * qualquer outro tipo (int, bool, float, dict, lista) -> JSON e entao cifrado. O evento sera rejeitado pelo handler
+        (VALIDACAO), mas nada legivel e gravado;
+      * se ainda assim falhar, grava o marcador fixo cifrado (ou, em ultimo caso, o marcador sem cifra: nao e dado pessoal).
+    Sempre cifra, mesmo que o texto ja comece com `enc1:` (o aparelho nao e confiavel para dizer o que ja esta cifrado).
+    """
+    copia = dict(payload)
+    for chave in CHAVES_PESSOAIS_PAYLOAD:
+        if chave not in copia or copia[chave] is None:
+            continue
+        contexto = contexto_payload(chave, client_event_id)
+        try:
+            copia[chave] = crypto.cifrar(_texto_para_cifrar(copia[chave]), contexto)
+        except Exception:  # noqa: BLE001 - propositalmente amplo: gravar o evento e mais importante que o valor
+            logger.warning("Valor de '%s' nao pode ser cifrado no evento %s; gravado o marcador.", chave, client_event_id)
+            try:
+                copia[chave] = crypto.cifrar(_MARCADOR_INVALIDO, contexto)
+            except Exception:  # noqa: BLE001
+                copia[chave] = _MARCADOR_INVALIDO
+    return copia
+
+
+def decifrar_payload(payload: Dict[str, Any], client_event_id) -> Dict[str, Any]:
+    """Inverso de `cifrar_payload` (copia). Valor que era nao-string volta como o TEXTO JSON serializado."""
+    copia = dict(payload)
+    for chave in CHAVES_PESSOAIS_PAYLOAD:
+        if crypto.esta_cifrado(copia.get(chave)):
+            copia[chave] = crypto.decifrar(copia[chave], contexto_payload(chave, client_event_id))
+    return copia
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -95,6 +161,11 @@ class _Finalizar(_P):
     nome_cliente: str = Field(..., min_length=1, max_length=100)
     documento_cliente: str = Field(..., min_length=1, max_length=20)
     assinatura_ref: UUID
+
+    @field_validator("nome_cliente", "documento_cliente", mode="after")
+    @classmethod
+    def _texto_armazenavel(cls, valor: str) -> str:  # NUL/surrogate isolado nao cabem no texto cifrado/PostgreSQL
+        return validar_texto_armazenavel(valor)
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -295,7 +366,7 @@ def _persistir_rejeicao(repo: SQLRepository, usuario: dict, ev: EventoSync, ocor
     db = repo.db
     try:
         db.add(SyncEvento(client_event_id=ev.client_event_id, id_tecnico=usuario["user_id"], id_os=id_os,
-                          id_visita=id_visita, tipo=ev.tipo, ocorrido_em=ocorrido, payload=payload,
+                          id_visita=id_visita, tipo=ev.tipo, ocorrido_em=ocorrido, payload=cifrar_payload(payload, ev.client_event_id),
                           resultado=REJEITADO, codigo=codigo, detalhe=detalhe))
         if chamado_conflito is not None:
             chamado_service.mover_para_pendente_por_conflito(repo, chamado_conflito, detalhe,
@@ -366,7 +437,7 @@ def _processar_um(repo: SQLRepository, usuario: dict, ev: EventoSync, recebido: 
 
     # Linha de idempotência adicionada ANTES do serviço: o commit do serviço confirma efeito + registro juntos.
     db.add(SyncEvento(client_event_id=ev.client_event_id, id_tecnico=usuario["user_id"], id_os=chamado.id_os,
-                      id_visita=visita.id_visita, tipo=ev.tipo, ocorrido_em=ocorrido, payload=payload,
+                      id_visita=visita.id_visita, tipo=ev.tipo, ocorrido_em=ocorrido, payload=cifrar_payload(payload, ev.client_event_id),
                       resultado=APLICADO))
     db.flush()
     ctx = Ctx(repo=repo, usuario=usuario, chamado=chamado, visita=visita, evento=ev, ocorrido=ocorrido, payload=payload)

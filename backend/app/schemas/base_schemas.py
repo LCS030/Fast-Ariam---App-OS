@@ -170,3 +170,13 @@ class ServicoEquipamento(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+def validar_texto_armazenavel(valor: str) -> str:
+    """
+    Recusa NUL (U+0000) e surrogate isolado (U+D800..U+DFFF): nao sao texto valido (UTF-8/PostgreSQL) e derrubariam a
+    cifragem em repouso (`TextoCifrado`) com 500. E validacao de dado invalido (422), nao regra de negocio nova.
+    """
+    if "\x00" in valor or any(0xD800 <= ord(c) <= 0xDFFF for c in valor):
+        raise ValueError("Texto contém caractere inválido (nulo ou surrogate isolado).")
+    return valor

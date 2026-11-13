@@ -57,7 +57,9 @@ class Visita(Base):
 
     # --- Assinatura do cliente na visita (SDD 4.7, PR-10, PR-35) ---
     assinatura_url = Column(String(255))            # caminho no Storage
-    nome_cliente_assinatura = Column(String(100))   # quem assinou
+    # quem assinou: CIFRADO em repouso (TEXT apos a 0014); limite de 100 caracteres validado no servico/esquema. O selo
+    # de integridade e calculado sobre o valor em CLARO (lido pelo ORM), entao nao muda ao cifrar.
+    nome_cliente_assinatura = Column(TextoCifrado("visita.nome_cliente_assinatura"))
     # CPF (11 digitos, validado pelo backend em `cpf_valido`), CIFRADO em repouso. O CHECK de 11 digitos foi retirado
     # (nao se aplica a texto cifrado); a regra continua garantida na camada de servico/esquema.
     documento_cliente = Column(TextoCifrado("visita.documento_cliente"))

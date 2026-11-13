@@ -8,9 +8,9 @@ Documento consolidado das seis skills e dos arquivos de coordenação. Os PRD/SD
 
 # Arquivo: `README.md`
 
-# Fast Ariam — Skills de agentes de software (v0.5)
+# Fast Ariam — Skills de agentes de software (PRD v0.5 / SDD v0.7)
 
-Pacote com seis skills especializadas alinhadas ao PRD/SDD v0.5:
+Pacote com seis skills especializadas alinhadas ao PRD v0.5 e à SDD v0.7:
 
 - **PO:** requisitos, regras de negócio, escopo, backlog e critérios de aceite.
 - **QA:** estratégia de testes, regressão, contrato, migrações, offline e evidências.
@@ -45,7 +45,7 @@ fast-ariam-agent-skills/
 4. Acione Security para modelagem de ameaças, criptografia, gestão de chaves, autenticação, integridade, assinatura, auditoria e incidentes.
 5. Não invoque todos os agentes em tarefas simples. Siga o fluxo de handoff do `AGENT_ROUTING.md`.
 
-## Decisões centrais do produto — PRD/SDD v0.3 a v0.5
+## Decisões centrais do produto — PRD v0.3 a v0.5 e SDD v0.3 a v0.7
 
 - `Pendente` = OS não finalizada sem técnico; `Aberto` é legado.
 - Reagendamento em `Pausado` é proibido até finalizar deslocamento de volta.
@@ -56,8 +56,9 @@ fast-ariam-agent-skills/
 - Ajudantes e notificações fora do escopo.
 - Desativação de técnico desatribui automaticamente todas as OS não finalizadas e não canceladas (RN-08a, resolvida em 07/11/2026).
 - **Equipamento da OS (v0.5, 08/11/2026):** o técnico não cadastra equipamento; o admin mantém o catálogo de modelos e vincula modelo + série na OS (toda OS tem ao menos um equipamento). Atendimento só inicia com foto de defeito e só finaliza com conserto salvo + foto de conserto, por equipamento. Admin corrige fotos e materiais apenas com a OS Finalizada, e a correção de materiais recalcula o custo com os valores congelados (RN-49). Situação: backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 414 testes automatizados em SQLite (v0.6, 09/11/2026) e um smoke ponta a ponta da v0.5 (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), seguidas das migrações `0010` a `0013` da v0.6. Entre 09 e 11/11/2026 o backend foi executado contra esse PostgreSQL, o painel web foi aberto no navegador e o app do técnico foi usado contra o backend nas verificações manuais de segurança registradas na SDD v0.6.1 (RLS, TLS `verify-full`, storage privado, JWT adulterado, hash de upload, selo da visita e cifra adulterada); a suíte de regras de negócio ainda não foi repetida contra o PostgreSQL.
+- **Confidencialidade e integridade (SDD v0.6 e v0.7, 08 e 12/11/2026):** AES-256-GCM na aplicação (`TextoCifrado`), SHA-256 dos arquivos e selo de integridade da visita; a v0.7 estendeu a cifragem ao contato principal do cliente, ao nome do signatário e ao nome/CPF do `sync_evento.payload`. Estado honesto da v0.7: Implementado (teste SQLite); aplicado no Supabase real em 12/11/2026 e conferido por consulta/script conforme declaração do responsável (evidências a anexar); sem backup pré-migração (desvio do runbook); não verificado pelo Security/QA (sem teste em PostgreSQL nem ensaio formal do DDL/rollback). Fila e cache do app, backups e histórico do provedor seguem com dado em claro.
 
-O PRD v0.5 define o comportamento do produto; a SDD v0.5 define os contratos técnicos. A API é a única fonte de verdade. O painel e o app não acessam diretamente o Supabase.
+O PRD v0.5 define o comportamento do produto; a SDD v0.7 define os contratos técnicos. A API é a única fonte de verdade. O painel e o app não acessam diretamente o Supabase.
 
 
 ## Segurança — quatro pilares
@@ -144,7 +145,7 @@ O agente que recebe o handoff deve confirmar os contratos relevantes e apontar i
 
 ## 5. Regras para evitar conflitos
 
-- PRD v0.5 governa o comportamento de negócio; SDD v0.5 governa o contrato técnico. Código atual é evidência de implementação, não a regra final.
+- PRD v0.5 governa o comportamento de negócio; SDD v0.7 governa o contrato técnico. Código atual é evidência de implementação, não a regra final.
 - Nenhum agente pode alterar silenciosamente o significado de status, fluxo de visita, permissões, custo, CPF, fotos, pausa, cancelamento ou sincronização.
 - Se uma proposta ou dúvida afeta comportamento, segurança, dados persistidos ou compatibilidade, abrir questão para PO/responsável antes de assumir.
 - Mudança de API exige atualização da SDD/contrato, schemas, consumidores e testes relacionados.
@@ -202,6 +203,7 @@ Uma entrega não está pronta quando apenas compila. Verificar:
 - Foto de conserto: menor lado ≥ 960 e maior lado ≥ 1280, em qualquer orientação. Tempo de serviço de visita pausada conta zero no custo.
 - CPF/CNPJ do técnico com máscara canônica (14/18); CPF do cliente na visita só dígitos (11).
 - Dev e produção compartilham o mesmo projeto Supabase (risco aceito pelo PO; Security mantém a ressalva). Não declarar SEG-xx como verificado com base apenas em testes SQLite.
+- **v0.7 (12/11/2026):** a cifragem de contato do cliente, nome do signatário e payload do sync está em "Implementado (teste SQLite)"; a migração `0014` e o script foram aplicados no Supabase real em 12/11/2026 pelo responsável, sem backup pré-migração, com conferências declaradas (evidências a anexar) e **não verificados pelo Security/QA** (sem teste em PostgreSQL). Nenhum agente roda migração ou script contra o `DATABASE_URL` do `.env` (dev = produção): a execução é do humano, na janela descrita na SDD 8.1 e em `backend/migrations/README.md`.
 - **Equipamento da OS (v0.5, confirmado em 08/11/2026; backend implementado (equipamentos, correção pós-finalização com recálculo de custo e sincronização offline `/api/sync/*`) com 414 testes automatizados em SQLite (v0.6, 09/11/2026) e um smoke ponta a ponta da v0.5 (378 passos) contra SQLite temporário; migrações `0007` e `0009` **aplicadas no Supabase real (projeto `bsuehcxvnfawmabielhl`) em 08/11/2026 pelo MCP, em 5 partes** (objetos, constraints, RLS e dados existentes conferidos por consulta; `get_advisors` sem WARN/ERROR), seguidas das migrações `0010` a `0013` da v0.6. Entre 09 e 11/11/2026 o backend foi executado contra esse PostgreSQL, o painel web foi aberto no navegador e o app do técnico foi usado contra o backend nas verificações manuais de segurança registradas na SDD v0.6.1 (RLS, TLS `verify-full`, storage privado, JWT adulterado, hash de upload, selo da visita e cifra adulterada); a suíte de regras de negócio ainda não foi repetida contra o PostgreSQL):** o técnico não cadastra nem edita equipamento, modelo ou série; o admin mantém o catálogo de modelos e vincula modelo + série na OS (um ou mais). Toda OS tem ao menos um equipamento (OS sem equipamento não é criada). Atendimento só inicia com foto de defeito por equipamento e só finaliza com conserto salvo + foto de conserto por equipamento (409), a cada visita; pausa dispensa. Admin edita equipamento só até o início do atendimento e, com a OS Finalizada, apenas fotos comprobatórias e materiais (auditado; o custo é recalculado com os valores congelados). Renomear modelo reescreve o histórico exibido. Contrato em SDD 4.8, 4.9, 6.6, 6.7 e 6.13.
 - Mudança de equipamento/série/foto/material passa por PO (regra), DBA (migração 0007 com `is_legado`), Backend (travas no serviço, não no router), Frontend (somente leitura no app; telas do painel) e QA (T-37 a T-59), na ordem da seção 3 "Feature com alteração de banco".
 
@@ -210,9 +212,9 @@ Uma entrega não está pronta quando apenas compila. Verificar:
 
 # Arquivo: `PROJECT_CONTEXT.md`
 
-# Contexto compartilhado do projeto — Fast Ariam (PRD/SDD v0.5)
+# Contexto compartilhado do projeto — Fast Ariam (PRD v0.5 / SDD v0.7)
 
-Este arquivo é a referência compacta comum aos seis agentes. Para o contrato completo, consultar `references/PRD-Fast-Ariam.md` e `references/SDD-Fast-Ariam.md`. Em caso de divergência, a decisão de negócio do PRD v0.4 (07/11/2026) prevalece sobre texto legado da SDD v0.2/v0.3 ou sobre o código atual; a SDD v0.4 traduz a decisão para o contrato técnico.
+Este arquivo é a referência compacta comum aos seis agentes. Para o contrato completo, consultar `references/PRD-Fast-Ariam.md` e `references/SDD-Fast-Ariam.md`. Em caso de divergência, a decisão de negócio do PRD v0.4 (07/11/2026) prevalece sobre texto legado da SDD v0.2/v0.3 ou sobre o código atual; a SDD (v0.4 a v0.7) traduz a decisão para o contrato técnico.
 
 ## 1. Produto e arquitetura
 
@@ -357,12 +359,14 @@ Não há decisão de negócio bloqueante em aberto (RN-08a foi resolvida em 07/1
 
 **Risco aceito pelo PO (07/11/2026):** dev e produção compartilham o mesmo projeto Supabase nesta fase; Security mantém a ressalva (SEG-05, SEG-12, SEG-19).
 
-**Status honesto dos controles:** os SEG-xx marcados como implementados na SDD v0.4 têm apenas testes automatizados em SQLite; não os trate como verificados até haver teste em PostgreSQL/Supabase e parecer de QA/Security.
+**Status honesto dos controles:** os SEG-xx marcados como implementados na SDD têm apenas testes automatizados em SQLite (exceto os itens que a SDD v0.6.1 registra como conferidos no Supabase real); não os trate como verificados até haver teste em PostgreSQL/Supabase e parecer de QA/Security.
+
+**v0.7 (12/11/2026, cifragem dos dados pessoais restantes, SEG-22 ampliado):** implementado e coberto por testes em SQLite (suíte 526 passando e 2 `xfail`, eram 414): `cliente.contato_principal_nome/telefone`, `visita.nome_cliente_assinatura` e as chaves `documento_cliente`/`nome_cliente` de `sync_evento.payload` cifrados. **Aplicação (12/11/2026, pelo responsável humano):** a migração `0014` e `scripts/cifrar_dados_existentes.py --campos --payload-sync` foram executados no Supabase real; o responsável declarou que as conferências passaram (`--verificar` código 0; B1 a B3 = 0; 3 colunas `text`; tela de clientes ok; `verificar-integridade` da OS 3 íntegro), mas **os prints ainda não foram anexados**. **Desvio do runbook: sem backup pré-migração** (os únicos backups são os de 08/11/2026, com dado em claro); o rollback (`--decifrar` → `0014_rollback.sql` → código anterior) não depende de backup. H3 (ajudante) não incluído, decisão pendente. **Estado: Implementado (teste SQLite); aplicado no Supabase real e conferido conforme declaração; não verificado pelo Security/QA** (sem teste em PostgreSQL nem ensaio formal do DDL/rollback). Em claro por decisão: `cliente.telefone` (comercial), dados cadastrais e textos livres; fila e cache do app (SEG-13) e backups também. Defeitos/riscos abertos: D-V07-2, D-V07-3, R-1 (SDD 8.1).
 
 ## 12. Precedência documental
 
 1. Decisões confirmadas no PRD v0.5.
-2. Contratos técnicos na SDD v0.5.
+2. Contratos técnicos na SDD v0.7.
 3. Código atual como evidência a ser comparada, não como definição de negócio.
 4. Documentos legados v0.2 a v0.4, apenas para histórico; nunca prevalecem sobre v0.5.
 
@@ -404,7 +408,7 @@ Antes de refinar uma demanda:
 3. Verifique o estado atual do repositório quando a demanda depender de comportamento já implementado.
 4. Consulte `AGENT_ROUTING.md` para handoffs.
 
-Não trate o código existente como definição da regra de negócio: o PRD v0.2 foi revisado por decisões do negócio e registra divergências do código.
+Não trate o código existente como definição da regra de negócio: o PRD v0.5 (que incorpora as decisões do negócio de v0.2 a v0.5; referência atual com a SDD v0.7) registra as divergências do código.
 
 ## Responsabilidades
 
@@ -443,9 +447,9 @@ Não trate o código existente como definição da regra de negócio: o PRD v0.2
 
 ## Como tratar documentação ambígua ou conflitante
 
-A introdução do PRD fala em seções 11.1/11.2, mas a cópia v0.2 anexada ainda contém uma seção 11 com perguntas antigas. Existem também trechos antigos na seção 12 da SDD. Não reabra uma decisão que já está detalhada e confirmada nas regras v0.2; tampouco trate toda proposta técnica como aprovada.
+No PRD v0.5 as seções 11.1 a 11.3 já registram as decisões confirmadas (a seção 11 antiga de perguntas foi substituída) e, na SDD v0.7, a seção 12 é o backlog atual; ainda assim, podem restar trechos legados (v0.2 a v0.4) ou propostas marcadas como tal. Não reabra uma decisão que já está detalhada e confirmada no PRD (11.1 a 11.1.2); tampouco trate toda proposta técnica como aprovada.
 
-Em particular, não transformar automaticamente em regra fechada os itens marcados como proposta ou ligados a Q1, Q2, Q6, Q7, Q9 e Q11 da SDD. São exemplos: reagendamento enquanto Pausado, mudança de data de visita Agendada antes da ida, precedência temporal de ação offline vs administrativa, desativação de técnico, cancelamento de OS Finalizada e congelamento do custo. Quando a decisão afetar dados, fluxo ou contrato, registre a pergunta e solicite decisão ao responsável.
+Em particular, não transformar automaticamente em regra fechada os itens marcados como proposta ou que a SDD ainda marque como proposta (Q1, Q2, Q6, Q7, Q9 e Q11 são identificadores históricos). Exemplos históricos, já decididos no PRD 11.1/11.1.1 (a regra vale para itens novos): reagendamento enquanto Pausado, mudança de data de visita Agendada antes da ida, precedência temporal de ação offline vs administrativa, desativação de técnico, cancelamento de OS Finalizada e congelamento do custo. Quando a decisão afetar dados, fluxo ou contrato, registre a pergunta e solicite decisão ao responsável.
 
 Conflito material deve ser descrito com: fonte A, fonte B, impacto, opção recomendada e decisão necessária. Não resolver pelo silêncio.
 
@@ -522,7 +526,7 @@ Proteger o Fast Ariam contra regressões, violações de regras, perda de dados,
 
 ## Leitura obrigatória
 
-Antes dos testes, leia `PROJECT_CONTEXT.md`, consulte os critérios `CA-01` a `CA-37` do PRD e os testes `T-01` a `T-59` da SDD (T-37 a T-59 e CA-25 a CA-37 são da regra de equipamento da v0.5, já implementada; T-60 a T-112 cobrem a confidencialidade e a integridade da v0.6). Consulte também o contrato da rota ou modelo afetado. Se um critério estiver obsoleto ou conflitar com regra v0.2, registre a divergência antes de usá-lo como oráculo.
+Antes dos testes, leia `PROJECT_CONTEXT.md`, consulte os critérios `CA-01` a `CA-37` do PRD e os testes `T-01` a `T-133` da SDD (T-37 a T-59 e CA-25 a CA-37 são da regra de equipamento da v0.5, já implementada; T-60 a T-112 cobrem a confidencialidade e a integridade da v0.6; T-113 a T-133 e CA-V07-1 a CA-V07-9, na SDD 11.4, cobrem a cifragem dos dados pessoais restantes da v0.7: suíte do backend em 526 passando e 2 `xfail`, só em SQLite). Consulte também o contrato da rota ou modelo afetado. Se um critério estiver obsoleto ou conflitar com regra v0.2, registre a divergência antes de usá-lo como oráculo.
 
 ## Responsabilidades
 
@@ -629,6 +633,8 @@ Entregue uma tabela curta com: requisito, cenário, resultado, evidência, sever
 - Não marcar teste como aprovado apenas porque não foi executado.
 - Não afirmar cobertura total sem mapear todos os critérios e casos de risco.
 - Quando proposta de SDD ainda aguardar decisão, reportar como bloqueio de especificação, não como defeito definitivo.
+- **SQLite não prova `VARCHAR(n)` nem `JSONB`:** o SQLite ignora o tamanho de `VARCHAR` e não tem `jsonb_typeof`, `?`, `->>` nem a recusa de `\u0000` do PostgreSQL. Teste verde em SQLite = "Implementado (teste SQLite)", nunca "verificado". Verificar exige teste em PostgreSQL equivalente ao de produção e parecer do QA/Security; a aplicação da `0014` em 12/11/2026 foi **declarada** pelo responsável, sem evidências anexadas, e não substitui esse teste (SDD 11.4).
+- Testes que leem texto de documentação (por exemplo, o T-132 sobre a linha da `0014` no README das migrações) precisam ser atualizados junto com a situação da migração.
 
 
 ---
@@ -678,7 +684,7 @@ Ver SDD seção 4. As entidades principais são:
 - `ordem_servico`: OS, cliente, técnico atribuído, status, datas, cancelamento e histórico.
 - `visita`: uma execução em campo associada à OS; uma OS possui várias visitas.
 - `equipamento_modelo` (v0.5, aplicada em 08/11/2026): catálogo de modelos; nome único sem diferenciar maiúsculas; desativação lógica.
-- `os_equipamento` (v0.5, aplicada em 08/11/2026): vínculo OS × modelo + número de série (único por OS sem diferenciar maiúsculas); FKs `RESTRICT`; RLS sem políticas (SEG-20). Migração em fases com `is_legado` (SDD 4.8 e 4.9; migração `0007`; próxima migração livre: 0014).
+- `os_equipamento` (v0.5, aplicada em 08/11/2026): vínculo OS × modelo + número de série (único por OS sem diferenciar maiúsculas); FKs `RESTRICT`; RLS sem políticas (SEG-20). Migração em fases com `is_legado` (SDD 4.8 e 4.9; migração `0007`).
 - `servico_equipamento`: registro de serviço de um equipamento da OS em uma visita (v0.5: `id_os_equipamento`, `conserto_salvo_em`, `is_legado`; série/nome legados somente leitura).
 - `servico_defeito`: defeitos/subdefeitos de um equipamento.
 - `servico_foto`: fotos de defeito e conserto por equipamento.
@@ -689,6 +695,8 @@ Ver SDD seção 4. As entidades principais são:
 - `custo_os` (proposta v0.2): snapshot do custo calculado da OS.
 - `sync_evento` (proposta v0.2): idempotência, payload e resultado de eventos offline.
 - `log_acao` (proposta v0.2): trilha de auditoria.
+
+**Migrações 0010 a 0014 (confidencialidade e integridade, v0.6 e v0.7; situação conforme `backend/migrations/README.md`):** `0010` (hash e selo), `0011` (cifragem: colunas sensíveis em `text`, `tecnico.cnpj_idx`), `0012` (`cnpj_idx NOT NULL`) e `0013` (buckets privados) foram **aplicadas no Supabase real em 08/11/2026**; a `0014` (`cliente.contato_principal_nome/telefone` e `visita.nome_cliente_assinatura` em `text`) foi **aplicada em 12/11/2026 pelo responsável, sem backup pré-migração** (desvio do runbook; conferências declaradas, prints pendentes; **não verificada pelo Security/QA**, sem ensaio formal do DDL/rollback em banco descartável). Próxima migração livre: 0015 (conferir a pasta). Ordem obrigatória de qualquer migração que mude o tipo de coluna cifrada: **backup verificado (e backup da `DATA_ENCRYPTION_KEY` fora do repositório e do banco) → API parada → migração → `scripts/cifrar_dados_existentes.py` → `--verificar` e consultas de conferência = 0 → subir a API**. **Rollback com trava `enc1:`:** `--decifrar` → `0014_rollback.sql` (aborta se restar `enc1:` em coluna ou no payload do `sync_evento`; também trava por tamanho antes de voltar a `varchar`); o rollback não depende de backup, mas o backup continua sendo o gate. Lembrete: o `--dry-run` não acusa estouro de `varchar`; o gate é a consulta de tipos (`information_schema`) após a migração.
 
 Não achatar uma relação 1:N para campos da OS. Em especial, assinaturas e dados de cliente pertencem a cada visita, porque uma OS pode ter múltiplas visitas.
 
@@ -893,6 +901,13 @@ Não enviar status em formatos inventados como `AGENDADO`, `EM_ATENDIMENTO`, `CO
 - Não preencher campos vazios com dados fictícios/defaults que alterem significado.
 
 Implementado na v0.6 (09/11/2026): buckets privados `fast-ariam-privado` e `fast-ariam-privado-dev`, sem políticas em `storage.objects`; objetos em `uploads/` e `assinaturas/` (assinaturas cifradas, `.enc`); leitura só pelas rotas autenticadas da API (`.../arquivos/conteudo`, `.../assinatura`), sem URLs assinadas; 17 arquivos migrados e conferidos por SHA-256 (`scripts/migrar_arquivos_para_storage.py`). Toda nova credencial de serviço externo deve ser neutralizada no `conftest.py` antes de entrar no `.env` (SDD 9).
+
+## Cifragem de dados pessoais (SDD 8.1, v0.6 e v0.7)
+
+- `TextoCifrado` (`app/core/crypto.py`) cifra com AES-256-GCM ao gravar e decifra ao ler (`enc1:<base64>`), com AAD **por coluna**. Cobre `visita.documento_cliente` e `tecnico.cpf/cnpj/telefone/banco/agencia/conta/pix` (v0.6) e, ampliado na v0.7, `cliente.contato_principal_nome`, `cliente.contato_principal_telefone` e `visita.nome_cliente_assinatura`. Em claro por decisão (D5 reescrita): `cliente.telefone` (comercial), razão social, endereço, e-mail/nome do técnico e textos livres.
+- `sync_evento.payload` (JSONB): `cifrar_payload` (`services/sync_service.py`) cifra por chave `documento_cliente` e `nome_cliente`, com **AAD por linha** (`sync_evento.<chave>|<client_event_id>`; valor cifrado copiado para outro evento não decifra). É chamada nos **dois pontos de gravação** do `sync_evento` (`_persistir_rejeicao` e a linha de idempotência do evento aplicado); valor não-string vira texto JSON cifrado e `decifrar_payload` faz o caminho inverso. Nunca gravar `sync_evento` sem passar por `cifrar_payload`.
+- `validar_texto_armazenavel` (`schemas/base_schemas.py`) recusa NUL e surrogate isolado nos campos de contato do cliente e no nome do signatário (422; no sync, `VALIDACAO`) antes de cifrar e gravar.
+- Estado: Implementado (teste SQLite); a migração `0014` e o script `cifrar_dados_existentes.py` foram aplicados no Supabase real em 12/11/2026 pelo responsável (conferência declarada, evidências a anexar; sem backup pré-migração); **não verificado pelo Security/QA**. Nenhum agente roda migração ou script contra o `DATABASE_URL` do `.env` (dev = produção). Abertos: D-V07-2 (uma linha de cliente em claro faz a listagem responder 500), D-V07-3 (surrogate isolado no REST responde 500) e R-1 (SDD 8.1).
 
 ## Custos
 
@@ -1112,7 +1127,7 @@ Antes de trabalhar:
 2. Consulte `references/PRD-Fast-Ariam.md` e `references/SDD-Fast-Ariam.md`, principalmente arquitetura, RBAC, autenticação, sincronização offline, Storage, auditoria e seção 8 (Segurança).
 3. Inspecione a implementação real, dependências, variáveis de ambiente, configurações de deploy, políticas do Supabase e testes. A SDD descreve o contrato-alvo; ela não prova que o controle já existe.
 
-Precedência: decisões confirmadas no PRD v0.5 → contrato técnico da SDD v0.5 → implementação real como evidência. Se a mudança de segurança alterar comportamento, persistência, contrato ou experiência do usuário, encaminhe a decisão ao PO/responsável e solicite atualização da documentação antes de tratar a proposta como requisito definitivo.
+Precedência: decisões confirmadas no PRD v0.5 → contrato técnico da SDD v0.7 → implementação real como evidência. Se a mudança de segurança alterar comportamento, persistência, contrato ou experiência do usuário, encaminhe a decisão ao PO/responsável e solicite atualização da documentação antes de tratar a proposta como requisito definitivo.
 
 ## 3. Escopo de segurança do Fast Ariam
 
@@ -1153,7 +1168,7 @@ Objetivo: verificar que a outra parte da comunicação é quem afirma ser.
 
 - **Identidade do servidor:** TLS deve validar o certificado do servidor e sua cadeia de confiança. A chave privada correspondente permanece na infraestrutura protegida; clientes recebem e validam a chave/certificado público, nunca a chave privada.
 - **Identidade de usuário:** manter os fatores e o fluxo de login definidos no PRD. Verificar senha, estado ativo, papel e autorização no servidor. Não confiar em dados de perfil ou permissões enviados pelo cliente.
-- **Tokens:** a SDD v0.5 documenta JWT HS256, que utiliza segredo simétrico compartilhado. Isso não equivale a assinatura assimétrica com par pública/privada. Quando o requisito exigir validação assimétrica do emissor do token, elaborar proposta de migração para JWT assinado com algoritmo assimétrico suportado e mantido (por exemplo, RS256 ou EdDSA, após validar suporte da biblioteca), com chave privada exclusivamente no servidor e chave pública para verificação. Não trocar HS256 silenciosamente: avaliar compatibilidade, rotação, `kid`, período de transição, revogação, expiração e atualização da SDD com PO/Backend.
+- **Tokens:** a SDD (v0.5 a v0.7) documenta JWT HS256, que utiliza segredo simétrico compartilhado. Isso não equivale a assinatura assimétrica com par pública/privada. Quando o requisito exigir validação assimétrica do emissor do token, elaborar proposta de migração para JWT assinado com algoritmo assimétrico suportado e mantido (por exemplo, RS256 ou EdDSA, após validar suporte da biblioteca), com chave privada exclusivamente no servidor e chave pública para verificação. Não trocar HS256 silenciosamente: avaliar compatibilidade, rotação, `kid`, período de transição, revogação, expiração e atualização da SDD com PO/Backend.
 - **Identidade do cliente/dispositivo:** se for necessário provar criptograficamente a identidade do dispositivo Android, avaliar um par de chaves por instalação/usuário, gerado e protegido no Android Keystore, com chave pública cadastrada no servidor e processo de revogação por perda/troca do dispositivo. Não tratar um JWT Bearer roubável como prova irrefutável de posse de um dispositivo.
 - **Comunicação entre serviços:** usar certificados/chaves assimétricas ou mecanismo de identidade gerenciado quando houver serviço adicional. Mutual TLS (mTLS) é uma opção para autenticação dos dois lados, mas só deve ser adotada se a arquitetura e o ciclo de vida de clientes certificados forem viáveis.
 - Validar `iss`, `aud`, `exp`, `nbf`, algoritmo permitido e assinatura dos tokens. Rejeitar `alg=none`, algoritmo inesperado, chave desconhecida ou token expirado. Não aceitar algoritmo definido livremente pelo token.
@@ -1201,7 +1216,7 @@ Objetivo: fornecer evidência verificável de que determinada pessoa/entidade as
 
 ## 6. Controles específicos já previstos na SDD
 
-Avaliar e acompanhar, sem presumir implementação, os requisitos SEG-01 a SEG-15:
+Avaliar e acompanhar, sem presumir implementação, os requisitos SEG-01 a SEG-28 da SDD v0.7 (a lista abaixo cobre o núcleo SEG-01 a SEG-15):
 
 - Verificação de usuário ativo em toda requisição; mensagem uniforme para falha de login; CORS por ambiente.
 - Proteção do token do painel contra exposição por XSS; guarda de scripts destrutivos por ambiente; logger estruturado sem `print` de depuração.
@@ -1211,8 +1226,9 @@ Avaliar e acompanhar, sem presumir implementação, os requisitos SEG-01 a SEG-1
 - `SUPABASE_SERVICE_KEY` exclusivamente no backend; policies/RLS adequadas; token, fila e arquivos locais protegidos no Android.
 - Bucket privado, entrega de arquivos só pela API autenticada e backup/acesso mínimo.
 - Sincronização deve rejeitar técnico inativo e OS fora da atribuição; auditar conflitos sem perder silenciosamente os registros.
+- **SEG-22 (ampliado na v0.7) e SEG-23:** cifragem AES-256-GCM na aplicação de CPF/CNPJ/telefone/dados bancários do técnico, CPF do cliente na visita, contato principal do cliente, nome do signatário e chaves `documento_cliente`/`nome_cliente` do `sync_evento.payload` (AAD por coluna; por linha no `sync_evento`); três chaves distintas (dados, índice, selo) fora do repositório. Fila e cache do app, backups e histórico do provedor seguem em claro (SEG-13, SEG-28); sem cofre/KMS nem rotação (SEG-23). Estado em 12/11/2026: Implementado (teste SQLite); `0014` e script aplicados no Supabase real conforme declaração do responsável (evidências a anexar), sem backup pré-migração; **não verificado pelo Security/QA**.
 
-O agente deve manter matriz de rastreabilidade `SEG → ameaça → controle → componente → teste → evidência → status`. Status permitidos: `não avaliado`, `não implementado`, `parcial`, `implementado`, `verificado` ou `aceito como risco`. Use `verificado` somente depois de teste/evidência reproduzível.
+O agente deve manter matriz de rastreabilidade `SEG → ameaça → controle → componente → teste → evidência → status`. Status permitidos: `não avaliado`, `não implementado`, `parcial`, `implementado`, `verificado` ou `aceito como risco`. Use `verificado` somente depois de teste/evidência reproduzível. **Regra do projeto: não declarar um controle `verificado` (nem "protegido de ponta a ponta" ou "nenhum dado pessoal legível") sem teste em PostgreSQL equivalente ao de produção e parecer do Security/QA; teste em SQLite e execução declarada pelo responsável sem evidência anexada permanecem como `implementado`/`parcial`.**
 
 ## 7. Método de trabalho
 

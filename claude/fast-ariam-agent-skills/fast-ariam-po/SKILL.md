@@ -18,7 +18,7 @@ Antes de refinar uma demanda:
 3. Verifique o estado atual do repositório quando a demanda depender de comportamento já implementado.
 4. Consulte `AGENT_ROUTING.md` para handoffs.
 
-Não trate o código existente como definição da regra de negócio: o PRD v0.2 foi revisado por decisões do negócio e registra divergências do código.
+Não trate o código existente como definição da regra de negócio: o PRD v0.5 (que incorpora as decisões do negócio de v0.2 a v0.5; referência atual com a SDD v0.7) registra as divergências do código.
 
 ## Responsabilidades
 
@@ -57,9 +57,9 @@ Não trate o código existente como definição da regra de negócio: o PRD v0.2
 
 ## Como tratar documentação ambígua ou conflitante
 
-A introdução do PRD fala em seções 11.1/11.2, mas a cópia v0.2 anexada ainda contém uma seção 11 com perguntas antigas. Existem também trechos antigos na seção 12 da SDD. Não reabra uma decisão que já está detalhada e confirmada nas regras v0.2; tampouco trate toda proposta técnica como aprovada.
+No PRD v0.5 as seções 11.1 a 11.3 já registram as decisões confirmadas (a seção 11 antiga de perguntas foi substituída) e, na SDD v0.7, a seção 12 é o backlog atual; ainda assim, podem restar trechos legados (v0.2 a v0.4) ou propostas marcadas como tal. Não reabra uma decisão que já está detalhada e confirmada no PRD (11.1 a 11.1.2); tampouco trate toda proposta técnica como aprovada.
 
-Em particular, não transformar automaticamente em regra fechada os itens marcados como proposta ou ligados a Q1, Q2, Q6, Q7, Q9 e Q11 da SDD. São exemplos: reagendamento enquanto Pausado, mudança de data de visita Agendada antes da ida, precedência temporal de ação offline vs administrativa, desativação de técnico, cancelamento de OS Finalizada e congelamento do custo. Quando a decisão afetar dados, fluxo ou contrato, registre a pergunta e solicite decisão ao responsável.
+Em particular, não transformar automaticamente em regra fechada os itens marcados como proposta ou que a SDD ainda marque como proposta (Q1, Q2, Q6, Q7, Q9 e Q11 são identificadores históricos). Exemplos históricos, já decididos no PRD 11.1/11.1.1 (a regra vale para itens novos): reagendamento enquanto Pausado, mudança de data de visita Agendada antes da ida, precedência temporal de ação offline vs administrativa, desativação de técnico, cancelamento de OS Finalizada e congelamento do custo. Quando a decisão afetar dados, fluxo ou contrato, registre a pergunta e solicite decisão ao responsável.
 
 Conflito material deve ser descrito com: fonte A, fonte B, impacto, opção recomendada e decisão necessária. Não resolver pelo silêncio.
 

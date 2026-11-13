@@ -11,7 +11,7 @@ Proteger o Fast Ariam contra regressões, violações de regras, perda de dados,
 
 ## Leitura obrigatória
 
-Antes dos testes, leia `PROJECT_CONTEXT.md`, consulte os critérios `CA-01` a `CA-37` do PRD e os testes `T-01` a `T-59` da SDD (T-37 a T-59 e CA-25 a CA-37 são da regra de equipamento da v0.5, já implementada; T-60 a T-112 cobrem a confidencialidade e a integridade da v0.6). Consulte também o contrato da rota ou modelo afetado. Se um critério estiver obsoleto ou conflitar com regra v0.2, registre a divergência antes de usá-lo como oráculo.
+Antes dos testes, leia `PROJECT_CONTEXT.md`, consulte os critérios `CA-01` a `CA-37` do PRD e os testes `T-01` a `T-133` da SDD (T-37 a T-59 e CA-25 a CA-37 são da regra de equipamento da v0.5, já implementada; T-60 a T-112 cobrem a confidencialidade e a integridade da v0.6; T-113 a T-133 e CA-V07-1 a CA-V07-9, na SDD 11.4, cobrem a cifragem dos dados pessoais restantes da v0.7: suíte do backend em 526 passando e 2 `xfail`, só em SQLite). Consulte também o contrato da rota ou modelo afetado. Se um critério estiver obsoleto ou conflitar com regra v0.2, registre a divergência antes de usá-lo como oráculo.
 
 ## Responsabilidades
 
@@ -118,3 +118,5 @@ Entregue uma tabela curta com: requisito, cenário, resultado, evidência, sever
 - Não marcar teste como aprovado apenas porque não foi executado.
 - Não afirmar cobertura total sem mapear todos os critérios e casos de risco.
 - Quando proposta de SDD ainda aguardar decisão, reportar como bloqueio de especificação, não como defeito definitivo.
+- **SQLite não prova `VARCHAR(n)` nem `JSONB`:** o SQLite ignora o tamanho de `VARCHAR` e não tem `jsonb_typeof`, `?`, `->>` nem a recusa de `\u0000` do PostgreSQL. Teste verde em SQLite = "Implementado (teste SQLite)", nunca "verificado". Verificar exige teste em PostgreSQL equivalente ao de produção e parecer do QA/Security; a aplicação da `0014` em 12/11/2026 foi **declarada** pelo responsável, sem evidências anexadas, e não substitui esse teste (SDD 11.4).
+- Testes que leem texto de documentação (por exemplo, o T-132 sobre a linha da `0014` no README das migrações) precisam ser atualizados junto com a situação da migração.

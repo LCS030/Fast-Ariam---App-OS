@@ -1225,7 +1225,9 @@ def test_consultas_de_conferencia_e_readme_da_0014():
     assert re.findall(r"^(?:INSERT|UPDATE|DELETE|ALTER|DROP)\b", _sem_comentarios(consultas), re.M | re.I) == []  # so leitura
     readme = (BACKEND / "migrations" / "README.md").read_text(encoding="utf-8")
     linha = next(l for l in readme.splitlines() if l.startswith("| 14 |"))
-    assert "NAO APLICADA" in linha and "0014_rollback.sql" in linha and "--verificar" in linha
+    # O status (NAO APLICADA -> APLICADA em 12/11/2026) muda com a janela de execucao; o teste so exige que a linha
+    # registre o estado e continue apontando para o rollback e para o --verificar.
+    assert re.search(r"\bAPLICADA\b", linha) and "0014_rollback.sql" in linha and "--verificar" in linha
 
 
 def test_limite_sqlite_nao_aplica_varchar_n_entao_o_estouro_de_varchar_nao_e_verificavel_aqui():

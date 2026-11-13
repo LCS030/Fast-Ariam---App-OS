@@ -19,7 +19,7 @@ Antes de trabalhar:
 2. Consulte `references/PRD-Fast-Ariam.md` e `references/SDD-Fast-Ariam.md`, principalmente arquitetura, RBAC, autenticação, sincronização offline, Storage, auditoria e seção 8 (Segurança).
 3. Inspecione a implementação real, dependências, variáveis de ambiente, configurações de deploy, políticas do Supabase e testes. A SDD descreve o contrato-alvo; ela não prova que o controle já existe.
 
-Precedência: decisões confirmadas no PRD v0.5 → contrato técnico da SDD v0.5 → implementação real como evidência. Se a mudança de segurança alterar comportamento, persistência, contrato ou experiência do usuário, encaminhe a decisão ao PO/responsável e solicite atualização da documentação antes de tratar a proposta como requisito definitivo.
+Precedência: decisões confirmadas no PRD v0.5 → contrato técnico da SDD v0.7 → implementação real como evidência. Se a mudança de segurança alterar comportamento, persistência, contrato ou experiência do usuário, encaminhe a decisão ao PO/responsável e solicite atualização da documentação antes de tratar a proposta como requisito definitivo.
 
 ## 3. Escopo de segurança do Fast Ariam
 
@@ -60,7 +60,7 @@ Objetivo: verificar que a outra parte da comunicação é quem afirma ser.
 
 - **Identidade do servidor:** TLS deve validar o certificado do servidor e sua cadeia de confiança. A chave privada correspondente permanece na infraestrutura protegida; clientes recebem e validam a chave/certificado público, nunca a chave privada.
 - **Identidade de usuário:** manter os fatores e o fluxo de login definidos no PRD. Verificar senha, estado ativo, papel e autorização no servidor. Não confiar em dados de perfil ou permissões enviados pelo cliente.
-- **Tokens:** a SDD v0.5 documenta JWT HS256, que utiliza segredo simétrico compartilhado. Isso não equivale a assinatura assimétrica com par pública/privada. Quando o requisito exigir validação assimétrica do emissor do token, elaborar proposta de migração para JWT assinado com algoritmo assimétrico suportado e mantido (por exemplo, RS256 ou EdDSA, após validar suporte da biblioteca), com chave privada exclusivamente no servidor e chave pública para verificação. Não trocar HS256 silenciosamente: avaliar compatibilidade, rotação, `kid`, período de transição, revogação, expiração e atualização da SDD com PO/Backend.
+- **Tokens:** a SDD (v0.5 a v0.7) documenta JWT HS256, que utiliza segredo simétrico compartilhado. Isso não equivale a assinatura assimétrica com par pública/privada. Quando o requisito exigir validação assimétrica do emissor do token, elaborar proposta de migração para JWT assinado com algoritmo assimétrico suportado e mantido (por exemplo, RS256 ou EdDSA, após validar suporte da biblioteca), com chave privada exclusivamente no servidor e chave pública para verificação. Não trocar HS256 silenciosamente: avaliar compatibilidade, rotação, `kid`, período de transição, revogação, expiração e atualização da SDD com PO/Backend.
 - **Identidade do cliente/dispositivo:** se for necessário provar criptograficamente a identidade do dispositivo Android, avaliar um par de chaves por instalação/usuário, gerado e protegido no Android Keystore, com chave pública cadastrada no servidor e processo de revogação por perda/troca do dispositivo. Não tratar um JWT Bearer roubável como prova irrefutável de posse de um dispositivo.
 - **Comunicação entre serviços:** usar certificados/chaves assimétricas ou mecanismo de identidade gerenciado quando houver serviço adicional. Mutual TLS (mTLS) é uma opção para autenticação dos dois lados, mas só deve ser adotada se a arquitetura e o ciclo de vida de clientes certificados forem viáveis.
 - Validar `iss`, `aud`, `exp`, `nbf`, algoritmo permitido e assinatura dos tokens. Rejeitar `alg=none`, algoritmo inesperado, chave desconhecida ou token expirado. Não aceitar algoritmo definido livremente pelo token.
@@ -108,7 +108,7 @@ Objetivo: fornecer evidência verificável de que determinada pessoa/entidade as
 
 ## 6. Controles específicos já previstos na SDD
 
-Avaliar e acompanhar, sem presumir implementação, os requisitos SEG-01 a SEG-15:
+Avaliar e acompanhar, sem presumir implementação, os requisitos SEG-01 a SEG-28 da SDD v0.7 (a lista abaixo cobre o núcleo SEG-01 a SEG-15):
 
 - Verificação de usuário ativo em toda requisição; mensagem uniforme para falha de login; CORS por ambiente.
 - Proteção do token do painel contra exposição por XSS; guarda de scripts destrutivos por ambiente; logger estruturado sem `print` de depuração.
@@ -118,8 +118,9 @@ Avaliar e acompanhar, sem presumir implementação, os requisitos SEG-01 a SEG-1
 - `SUPABASE_SERVICE_KEY` exclusivamente no backend; policies/RLS adequadas; token, fila e arquivos locais protegidos no Android.
 - Bucket privado, entrega de arquivos só pela API autenticada e backup/acesso mínimo.
 - Sincronização deve rejeitar técnico inativo e OS fora da atribuição; auditar conflitos sem perder silenciosamente os registros.
+- **SEG-22 (ampliado na v0.7) e SEG-23:** cifragem AES-256-GCM na aplicação de CPF/CNPJ/telefone/dados bancários do técnico, CPF do cliente na visita, contato principal do cliente, nome do signatário e chaves `documento_cliente`/`nome_cliente` do `sync_evento.payload` (AAD por coluna; por linha no `sync_evento`); três chaves distintas (dados, índice, selo) fora do repositório. Fila e cache do app, backups e histórico do provedor seguem em claro (SEG-13, SEG-28); sem cofre/KMS nem rotação (SEG-23). Estado em 12/11/2026: Implementado (teste SQLite); `0014` e script aplicados no Supabase real conforme declaração do responsável (evidências a anexar), sem backup pré-migração; **não verificado pelo Security/QA**.
 
-O agente deve manter matriz de rastreabilidade `SEG → ameaça → controle → componente → teste → evidência → status`. Status permitidos: `não avaliado`, `não implementado`, `parcial`, `implementado`, `verificado` ou `aceito como risco`. Use `verificado` somente depois de teste/evidência reproduzível.
+O agente deve manter matriz de rastreabilidade `SEG → ameaça → controle → componente → teste → evidência → status`. Status permitidos: `não avaliado`, `não implementado`, `parcial`, `implementado`, `verificado` ou `aceito como risco`. Use `verificado` somente depois de teste/evidência reproduzível. **Regra do projeto: não declarar um controle `verificado` (nem "protegido de ponta a ponta" ou "nenhum dado pessoal legível") sem teste em PostgreSQL equivalente ao de produção e parecer do Security/QA; teste em SQLite e execução declarada pelo responsável sem evidência anexada permanecem como `implementado`/`parcial`.**
 
 ## 7. Método de trabalho
 

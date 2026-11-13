@@ -41,7 +41,7 @@ Ver SDD seção 4. As entidades principais são:
 - `ordem_servico`: OS, cliente, técnico atribuído, status, datas, cancelamento e histórico.
 - `visita`: uma execução em campo associada à OS; uma OS possui várias visitas.
 - `equipamento_modelo` (v0.5, aplicada em 08/11/2026): catálogo de modelos; nome único sem diferenciar maiúsculas; desativação lógica.
-- `os_equipamento` (v0.5, aplicada em 08/11/2026): vínculo OS × modelo + número de série (único por OS sem diferenciar maiúsculas); FKs `RESTRICT`; RLS sem políticas (SEG-20). Migração em fases com `is_legado` (SDD 4.8 e 4.9; migração `0007`; próxima migração livre: 0014).
+- `os_equipamento` (v0.5, aplicada em 08/11/2026): vínculo OS × modelo + número de série (único por OS sem diferenciar maiúsculas); FKs `RESTRICT`; RLS sem políticas (SEG-20). Migração em fases com `is_legado` (SDD 4.8 e 4.9; migração `0007`).
 - `servico_equipamento`: registro de serviço de um equipamento da OS em uma visita (v0.5: `id_os_equipamento`, `conserto_salvo_em`, `is_legado`; série/nome legados somente leitura).
 - `servico_defeito`: defeitos/subdefeitos de um equipamento.
 - `servico_foto`: fotos de defeito e conserto por equipamento.
@@ -52,6 +52,8 @@ Ver SDD seção 4. As entidades principais são:
 - `custo_os` (proposta v0.2): snapshot do custo calculado da OS.
 - `sync_evento` (proposta v0.2): idempotência, payload e resultado de eventos offline.
 - `log_acao` (proposta v0.2): trilha de auditoria.
+
+**Migrações 0010 a 0014 (confidencialidade e integridade, v0.6 e v0.7; situação conforme `backend/migrations/README.md`):** `0010` (hash e selo), `0011` (cifragem: colunas sensíveis em `text`, `tecnico.cnpj_idx`), `0012` (`cnpj_idx NOT NULL`) e `0013` (buckets privados) foram **aplicadas no Supabase real em 08/11/2026**; a `0014` (`cliente.contato_principal_nome/telefone` e `visita.nome_cliente_assinatura` em `text`) foi **aplicada em 12/11/2026 pelo responsável, sem backup pré-migração** (desvio do runbook; conferências declaradas, prints pendentes; **não verificada pelo Security/QA**, sem ensaio formal do DDL/rollback em banco descartável). Próxima migração livre: 0015 (conferir a pasta). Ordem obrigatória de qualquer migração que mude o tipo de coluna cifrada: **backup verificado (e backup da `DATA_ENCRYPTION_KEY` fora do repositório e do banco) → API parada → migração → `scripts/cifrar_dados_existentes.py` → `--verificar` e consultas de conferência = 0 → subir a API**. **Rollback com trava `enc1:`:** `--decifrar` → `0014_rollback.sql` (aborta se restar `enc1:` em coluna ou no payload do `sync_evento`; também trava por tamanho antes de voltar a `varchar`); o rollback não depende de backup, mas o backup continua sendo o gate. Lembrete: o `--dry-run` não acusa estouro de `varchar`; o gate é a consulta de tipos (`information_schema`) após a migração.
 
 Não achatar uma relação 1:N para campos da OS. Em especial, assinaturas e dados de cliente pertencem a cada visita, porque uma OS pode ter múltiplas visitas.
 
